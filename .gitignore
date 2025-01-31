@@ -1,0 +1,84 @@
+# Python
+*.py[cod]
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+.eggs/
+*.pyd
+*.whl
+
+# Virtual environment
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Pytest cache
+.pytest_cache/
+
+# Mypy cache
+.mypy_cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+.tox/
+.nox/
+
+# Next.js
+.next/
+out/
+build/
+!.next/cache # Exclude cache from exclusion
+
+# TypeScript
+*.tsbuildinfo
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Shadcn components
+components/ui/node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.old
+
+# Environment variables
+.env
+.env.*
+!.env.example # Keep .env.example for documentation
+
+# Other
+*.lock
+dist/
+coverage/
