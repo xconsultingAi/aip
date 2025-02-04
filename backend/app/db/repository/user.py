@@ -1,20 +1,33 @@
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.user import User
 
-#MJ: This file will contain all the database operations related to the User model
+# Logging Configuration
+logging.basicConfig(level=logging.INFO)
+
+# MJ: This file will contain all the database operations related to the User model
 
 async def get_user(db: AsyncSession, user_id: str) -> User | None:
+    logging.info(f"Attempting to fetch user with user_id: {user_id}")
     result = await db.execute(select(User).where(User.user_id == user_id))
-    return result.scalars().first()
+    user = result.scalars().first()
+    if user:
+        logging.info(f"User found: {user}")
+    else:
+        logging.info(f"No user found with user_id: {user_id}")
+    return user
 
 async def create_user(db: AsyncSession, user_id: str, name: str = None) -> User:
+    logging.info(f"Creating user with user_id: {user_id} and name: {name}")
+    user = User(user_id=user_id, name=name)
+    db.add(user)
     try:
-        user = User(user_id=user_id, name=name)
-        db.add(user)
         await db.commit()
         await db.refresh(user)
-        return user
-    except Exception as e:
+        logging.info(f"User created successfully: {user}")
+    except:
         await db.rollback()
-        raise RuntimeError(f"User creation failed: {str(e)}")
+        logging.error(f"Error occurred while creating user: {user_id}")
+        raise
+    return user

@@ -5,6 +5,7 @@ from app.models.agent import AgentCreate
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from fastapi import HTTPException, status
 from app.models.agent import AgentOut
+from app.db.models.organization import Organization
 
 #MJ: This file will contain all the database operations related to the Agent model
 
@@ -22,7 +23,9 @@ async def get_agents(db: AsyncSession, user_id: int):
 async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
     try:
         result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id and AgentDB.user_id == user_id))
-        return result.scalars().first()  
+        return result.scalars().first() 
+    
+     
     except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -31,7 +34,12 @@ async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
 
 async def create_agent(db: AsyncSession, agent: AgentCreate, user_id: int):
     try:
-        db_agent = AgentDB(name=agent.name, description=agent.description, user_id=user_id)
+        db_agent = AgentDB(
+            name=agent.name,
+            description=agent.description,
+            user_id=user_id,
+            organization_id=int(agent.organization_id)
+        )
         db.add(db_agent)
         await db.commit()
         await db.refresh(db_agent)

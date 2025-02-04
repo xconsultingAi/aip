@@ -5,6 +5,7 @@ from app.models.organization import OrganizationCreate
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 
+#SH: This file will contain all the database operations related to the Organization model
 async def create_organization(db: AsyncSession, organization: OrganizationCreate, user_id: str):
     try:
         db_organization = Organization(
