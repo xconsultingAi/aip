@@ -16,10 +16,14 @@ router = APIRouter(
 async def create_new_organization(
     organization: OrganizationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user) 
 ):
-    # Create organization and assign current user as admin
+    # creating organization and link to the user
     db_organization = await create_organization(db, organization, current_user.user_id)
+
+    current_user.organization_id = db_organization.id
+    await db.commit()
+
     return db_organization
 
 @router.get("/{organization_id}", response_model=OrganizationOut)

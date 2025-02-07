@@ -6,6 +6,7 @@ from app.db.repository.organization import create_organization
 from app.db.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization import OrganizationCreate
+from app.db.models.user import User
 
 http_bearer = HTTPBearer()
 
@@ -18,7 +19,7 @@ http_bearer = HTTPBearer()
 async def get_current_user(
         credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
         db: AsyncSession = Depends(get_db)
-                           ) -> dict:
+                           ) -> User:
    
     payload = verify_clerk_token(credentials)
     user_id = payload.get("sub")
@@ -56,4 +57,4 @@ async def get_current_user(
         await db.commit()
         await db.refresh(user)
 
-    return user
+    return user 

@@ -9,9 +9,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=True) 
-    # SH: Update this column
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True) 
+    # SH: Organization_id 
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False) 
     
-    # SH: Relationships
+    # SH: Relationships with agent and organization table
     organization = relationship("Organization", back_populates="users")
-    agents = relationship("Agent", back_populates="owner") 
+    agents = relationship("Agent", back_populates="owner")

@@ -13,23 +13,20 @@ CLERK_JWKS_URL = settings.CLERK_JWKS_URL
 
 #MJ: Fetch Clerk JWKS Key and Algorithm
 def get_clerk_jwks() -> dict:
-    
     #TODO: Add proper error handling
     headers = {
         "Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"
     }
     response = requests.get(CLERK_JWKS_URL, headers=headers)
     if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to fetch Clerk JWKS",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to fetch Clerk JWKS",
+        )
     return response.json() 
-
 
 #MJ: Verify Clerk Token
 def verify_clerk_token(credentials: HTTPAuthorizationCredentials) -> dict:
-
     #MJ: For Testing Only
     if settings.PRODUCTION == False:
         return create_test_payload()
@@ -41,13 +38,13 @@ def verify_clerk_token(credentials: HTTPAuthorizationCredentials) -> dict:
 
     #Get Clerk JWKS Data
     jwks_data = get_clerk_jwks()    
-    
+
     #Extract the algorithm and the key
     algorithm = jwks_data["keys"][0]["alg"]
     rsa_key = jwks_data["keys"][0]
-    
+
     options = {
-        algorithm: algorithm
+        "algorithms": [algorithm]
     }
 
     #MJ: Decoding the token with the rsa key
@@ -56,17 +53,17 @@ def verify_clerk_token(credentials: HTTPAuthorizationCredentials) -> dict:
             token,
             key=rsa_key,  
             options=options
-            
         )
-        return payload  # If successful, return the decoded payload
+        return payload
 
     #MJ: Default Error - Need to optimize this    
-    except JWTError:   
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.JWTClaimsError:
+        raise HTTPException(status_code=401, detail="Invalid claims")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 def create_test_payload():
     payload = {
