@@ -31,8 +31,8 @@ async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RA02: An error occurred while retrieving agent {agent_id}"
         )
-
-async def create_agent(db: AsyncSession, agent: AgentCreate, user_id: int):
+        
+async def create_agent(db: AsyncSession, agent: AgentCreate, user_id: int, organization_id: int) -> AgentDB:
     try:
         db_agent = AgentDB(
             name=agent.name,

@@ -17,20 +17,20 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)]  #MJ: Ensure secure routes for agents
 )
 
-
 @router.get("/", response_model=list[AgentOut])
 async def read_agents(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user)
     ):
-    agents = await get_agents(db,current_user.user_id)
+    agents = await get_agents(db, current_user.user_id)
     
     if not agents:
-        return error_response(message="No agents found",http_status=status.HTTP_404_NOT_FOUND)
-    agents_out = [AgentOut.model_validate(agent) for agent in agents]
+        return error_response(message="No agents found", http_status=status.HTTP_404_NOT_FOUND)
     
+    # Convert to Pydantic model
+    agents_out = [AgentOut.model_validate(agent) for agent in agents] 
     return success_response("Agents retrieved successfully", data=agents_out)
-    
+
 
 @router.get("/{agent_id}", response_model=AgentOut)
 async def read_agent(
@@ -57,8 +57,15 @@ async def create_new_agent(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user)
     ):
+    # Check if user has an organization
+    if not current_user.organization_id:
+        return error_response(
+            message=f"User does notexist in any Organization",
+            http_status=status.HTTP_403_FORBIDDEN
+        )
+    
     try:
-        new_agent = await create_agent(db, agent,current_user.user_id)
+        new_agent = await create_agent(db, agent, current_user.user_id, current_user.organization_id)
         agent_out = AgentOut.model_validate(new_agent)
         return success_response("Agent created successfully", data=agent_out)
     except IntegrityError as e:
@@ -66,17 +73,16 @@ async def create_new_agent(
         return error_response(
             message=f"An agent with the same details already exists.",
             http_status=status.HTTP_400_BAD_REQUEST
-            )
+        )
     except SQLAlchemyError as e:
         print(f"Database error occurred: {e}")
         return error_response(
             message=f"An unexpected error occurred while creating the agent.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        )
     except Exception as e:
         print(f"Unexpected error occurred: {e}")
         return error_response(
             message=f"An unexpected error occurred.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
+        )
