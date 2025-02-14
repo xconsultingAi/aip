@@ -1,9 +1,8 @@
-from fastapi import Request, status
+from fastapi import Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.responses import error_response
-
 #TODO: Add more exception handlers in this
 
 #MJ: HTTP Exceptions
@@ -26,3 +25,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 #MJ: General Exceptions
 async def general_exception_handler(request: Request, exc: Exception):
     return error_response("Internal server error", http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#SH: OpenAI Exception
+class LLMServiceError(HTTPException):
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"LLM Service Error: {detail}"
+        )
