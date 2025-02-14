@@ -1,8 +1,8 @@
-"""Recreate user, agent, and organization tables
+"""Initial migration
 
-Revision ID: c9075b2aa8ad
-Revises: 25129a93a26c
-Create Date: 2025-01-30 16:12:02.141465
+Revision ID: 852a7eec665a
+Revises: 
+Create Date: 2025-02-12 15:16:49.430804
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c9075b2aa8ad'
-down_revision: Union[str, None] = '25129a93a26c'
+revision: str = '852a7eec665a'
+down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -31,7 +31,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.String(), nullable=False),
     sa.Column('name', sa.String(), nullable=True),
-    sa.Column('organization_id', sa.Integer(), nullable=True),
+    sa.Column('organization_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('user_id')
@@ -43,6 +43,10 @@ def upgrade() -> None:
     sa.Column('description', sa.String(), nullable=True),
     sa.Column('user_id', sa.String(), nullable=False),
     sa.Column('organization_id', sa.Integer(), nullable=False),
+    sa.Column('model_name', sa.String(length=50), nullable=True),
+    sa.Column('temperature', sa.Float(), nullable=True),
+    sa.Column('max_length', sa.Integer(), nullable=True),
+    sa.Column('system_prompt', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ),
     sa.PrimaryKeyConstraint('id')

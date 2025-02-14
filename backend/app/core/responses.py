@@ -23,7 +23,7 @@ def success_response(message: str, data: list | dict | BaseModel, status_code: i
         status_code=status_code,
         content={
             "status_code": status_code,
-            "success": "true",
+            "success": True,
             "message": message,
             "data": data,
         },

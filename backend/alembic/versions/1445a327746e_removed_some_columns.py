@@ -1,8 +1,8 @@
-"""Add organization auto-creation
+"""removed some columns
 
-Revision ID: 42e48779880a
-Revises: c9075b2aa8ad
-Create Date: 2025-01-31 15:18:20.575308
+Revision ID: 1445a327746e
+Revises: 277ad1b4ebda
+Create Date: 2025-02-13 15:17:44.905567
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '42e48779880a'
-down_revision: Union[str, None] = 'c9075b2aa8ad'
+revision: str = '1445a327746e'
+down_revision: Union[str, None] = '277ad1b4ebda'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

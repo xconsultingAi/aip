@@ -6,7 +6,7 @@ from app.db.models.user import User
 # Logging Configuration
 logging.basicConfig(level=logging.INFO)
 
-# MJ: This file will contain all the database operations related to the User model
+# MJ: Yeh file User model ke related database operations ko handle karegi
 
 async def get_user(db: AsyncSession, user_id: str) -> User | None:
     logging.info(f"Attempting to fetch user with user_id: {user_id}")
@@ -18,16 +18,19 @@ async def get_user(db: AsyncSession, user_id: str) -> User | None:
         logging.info(f"No user found with user_id: {user_id}")
     return user
 
-async def create_user(db: AsyncSession, user_id: str, name: str = None) -> User:
-    logging.info(f"Creating user with user_id: {user_id} and name: {name}")
-    user = User(user_id=user_id, name=name)
+async def create_user(db: AsyncSession, user_id: str, name: str = None,
+                      organization_id: int = None) -> User:
+    logging.info(f"Creating user with user_id: {user_id}, name: {name}, org_id: {organization_id}")
+    user = User(user_id=user_id, name=name,organization_id=organization_id 
+    )
+    
     db.add(user)
     try:
         await db.commit()
         await db.refresh(user)
         logging.info(f"User created successfully: {user}")
-    except:
+    except Exception as e:
         await db.rollback()
-        logging.error(f"Error occurred while creating user: {user_id}")
+        logging.error(f"Error creating user {user_id}: {str(e)}")
         raise
     return user

@@ -19,8 +19,7 @@ http_bearer = HTTPBearer()
 async def get_current_user(
         credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
         db: AsyncSession = Depends(get_db)
-                           ) -> User:
-   
+) -> User:
     payload = verify_clerk_token(credentials)
     user_id = payload.get("sub")
 
@@ -32,24 +31,24 @@ async def get_current_user(
             detail="Token missing 'sub' claim",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    #TODO: MJ: This needs to be optimzied. We should not be hitting the database for every request
-    #SH: Create a Default Organization for new users
+    #TODO:MJ: This needs to be optimized. We should not be hitting the database for every request
     user = await get_user(db, user_id)
-    if not user:
-        #SH: Create user if not found
-        user = await create_user(db, user_id=user_id)
-        
-        #SH: Create default organization for the new user
-        org_name = f"{user.name}'s Organization" if user.name else "My Organization"
-        org_data = OrganizationCreate(name=org_name)
-        organization = await create_organization(db, org_data, user_id)
-        
-        #SH: Link user to the organization
-        user.organization_id = organization.id
-        await db.commit()
-        await db.refresh(user)
     
-    #SH: For existing users without organization (backward compatibility)
+    if not user:
+        #SH: Step 1: Create orgainzation first
+        org_data = OrganizationCreate(name="Default Organization")
+        organization = await create_organization(db, org_data, user_id)
+
+        #SH: Step 2: Create a User
+        user = await create_user(
+            db, 
+            user_id=user_id,
+            name=payload.get("name"), 
+            organization_id=organization.id
+        )
+        await db.refresh(user)
+
+    #SH: Ensure existing users also have an organization (backward compatibility)
     if not user.organization_id:
         org_data = OrganizationCreate(name="Recovery Organization")
         organization = await create_organization(db, org_data, user_id)
@@ -57,4 +56,4 @@ async def get_current_user(
         await db.commit()
         await db.refresh(user)
 
-    return user 
+    return user
