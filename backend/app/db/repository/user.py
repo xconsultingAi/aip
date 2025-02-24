@@ -18,7 +18,7 @@ async def get_user(db: AsyncSession, user_id: str) -> User | None:
         logging.info(f"No user found with user_id: {user_id}")
     return user
 
-async def create_user(db: AsyncSession, user_id: str, name: str = None,
+async def create_user(db: AsyncSession, user_id: int, name: str = None,
                       organization_id: int = None) -> User:
     logging.info(f"Creating user with user_id: {user_id}, name: {name}, org_id: {organization_id}")
     user = User(user_id=user_id, name=name,organization_id=organization_id 

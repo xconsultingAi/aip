@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from alembic import context
 from app.db.database import Base
 from app.db.models.user import User
+from app.db.models.knowledge_base import KnowledgeBase
 from app.db.models.agent import Agent
 from app.db.models.organization import Organization  # MJ: Include Organization Model
 from dotenv import load_dotenv
