@@ -6,8 +6,24 @@ from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 from app.models.agent import AgentOut
 from app.db.models.organization import Organization
+import logging
+from app.db.database import SessionLocal
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 
 #MJ: This file will contain all the database operations related to the Agent model
+
+async def get_db():
+    async with SessionLocal() as session:
+        # Explicit transaction start
+        await session.begin()
+        try:
+            yield session
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            raise
 
 async def get_agents(db: AsyncSession, user_id: int):
     try:
@@ -29,31 +45,37 @@ async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
             detail=f"RA02: An error occurred while retrieving agent {agent_id}"
         )
 
-async def create_agent(db: AsyncSession, agent: AgentCreate, user_id: int, organization_id: int) -> AgentDB:
+async def create_agent(
+    db: AsyncSession, 
+    agent: AgentCreate, 
+    user_id: str,  
+    organization_id: int  # Get from current_user
+) -> AgentDB:
     try:
         db_agent = AgentDB(
             name=agent.name,
             description=agent.description,
             user_id=user_id,
-            organization_id=int(agent.organization_id),
-            
-            #SH: For model configuration
+            organization_id=organization_id,  # Correct source
+
+            # Model configuration
             model_name=agent.config.model_name,
             temperature=agent.config.temperature,
             max_length=agent.config.max_length,
             system_prompt=agent.config.system_prompt,
-            config=agent.config.model_dump()
+            config=agent.config.model_dump()  # Ensure JSON conversion
         )
-        
+
         db.add(db_agent)
         await db.commit()
         await db.refresh(db_agent)
         return db_agent
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         await db.rollback()
+        logger.error(f"Agent creation error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="RA03: An error occurred creating new agent"
+            detail="RA03: Database error while creating agent"
         )
 
 async def update_agent_config(db: AsyncSession, agent_id: int, config: AgentConfigSchema):

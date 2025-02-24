@@ -10,11 +10,12 @@ const HomePage = async () => {
   const token = await getToken();
 
   console.log(token)
-  const response = await fetch('http://127.0.0.1:8000/api/agents', {
+  const response = await fetch('http://127.0.0.1:8000/agents', {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  })
+  });
+  
   const data = await response.json()
 
   if (!token) {

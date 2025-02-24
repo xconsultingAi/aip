@@ -1,11 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
 ALLOWED_MODELS = ["gpt-4", "gpt-3.5-turbo"]
 
 # MJ: These are Pydantic Models used for Request & Response Validation
-
-# Pehle AgentConfigSchema define karein
 class AgentConfigSchema(BaseModel):
     model_name: str = Field(default="gpt-4", description="Selected LLM model")
     temperature: float = Field(default=0.7, ge=0, le=1)
@@ -18,15 +16,18 @@ class AgentBase(BaseModel):
     description: Optional[str] = Field(None, max_length=255, description="Description is optional")
     organization_id: int = Field(..., description="Organization ID is compulsory")
     config: AgentConfigSchema = Field(default_factory=AgentConfigSchema)
-
+    
 class AgentCreate(AgentBase):
     pass
-
+    
 class AgentOut(AgentBase):
     id: int
     user_id: str
     organization_id: Optional[int] = None
-    config: AgentConfigSchema = Field(default_factory=AgentConfigSchema)
-
+    config: AgentConfigSchema
+    knowledge_id: Optional[int] = None
+class AgentResponse(BaseModel):
+    id: int
+    name: str
     class Config:
         from_attributes = True

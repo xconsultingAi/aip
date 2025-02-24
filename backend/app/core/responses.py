@@ -12,8 +12,7 @@ class DataResponse(BaseResponse):
     data: Optional[Any] = None
 
 #MJ: Default API Response (Success)
-def success_response(message: str, data: list | dict | BaseModel, status_code: int = 200):
-    
+def success_response(message: str, data: list | dict | BaseModel = {}, status_code: int = 200):
     if isinstance(data, BaseModel):
         data = data.model_dump()
     elif isinstance(data, list) and data and isinstance(data[0], BaseModel):
