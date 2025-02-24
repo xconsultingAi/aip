@@ -1,40 +1,53 @@
-"use client"
+"use client";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import EmptyState from "../../../components/custom/empty-state";
 import { UserGroupIcon } from "@heroicons/react/24/solid";
+import ChatInterface from "./ChatInterface";
+import ChatHistory from "./ChatHistory";
 
 const SectionPage = () => {
-  const { section } = useParams(); 
-  
+  const { section } = useParams();
+  const [view, setView] = useState<"empty" | "chat" | "history">("empty");
+
   const handlePrimaryAction = () => {
-    console.log("Create Assistant clicked");
+    console.log("Create New Chat clicked");
+    setView("chat"); // Show ChatInterface when the button is clicked
   };
 
   const handleSecondaryAction = () => {
     console.log("History clicked");
+    setView("history"); 
+    // Add logic for handling the History button click
   };
-  
-  
+
+  const handleBack = () => {
+    setView("empty"); // Go back to the main screen
+  };
 
   return (
     <div className="p-6 h-full">
-    <EmptyState
-      icon={<UserGroupIcon className="w-12 h-12 text-gray-300" />}
-      title={section?.toString() || "Default Title"}
-      description= "Chats show your conversation history..."
-      primaryAction={{
-        label: "Create New Chat",
-        onClick: handlePrimaryAction,
-      }}
-      secondaryAction={{
-        label: "History",
-        onClick: handleSecondaryAction,
-      }}
-    />
-  </div>
+      {view === "chat" ? (
+        <ChatInterface onBack={handleBack} />
+      ) : view === "history" ? (
+        <ChatHistory onBack={handleBack} />
+      ) : (
+        <EmptyState
+          icon={<UserGroupIcon className="w-12 h-12 text-gray-300" />}
+          title={<span className="text-black">{section?.toString() || "Chats"}</span>}
+          description="Chats show your conversation history..."
+          primaryAction={{
+            label: "Create New Chat",
+            onClick: handlePrimaryAction,
+          }}
+          secondaryAction={{
+            label: "History",
+            onClick: handleSecondaryAction,
+          }}
+        />
+      )}
+    </div>
   );
 };
 
-
 export default SectionPage;
-
