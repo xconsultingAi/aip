@@ -16,13 +16,15 @@ router = APIRouter(
 async def create_new_organization(
     organization: OrganizationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user) 
+    current_user: dict = Depends(get_current_user)
 ):
-    # creating organization and link to the user
     db_organization = await create_organization(db, organization, current_user.user_id)
-
-    current_user.organization_id = db_organization.id
-    await db.commit()
+    
+    if not db_organization:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create organization."
+        )
 
     return db_organization
 
