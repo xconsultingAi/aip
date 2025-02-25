@@ -12,8 +12,6 @@ from app.models.user import UserOut as User
 from app.core.exceptions import LLMServiceError, InvalidAPIKeyError
 from typing import List
 from app.services.llm_services import LLMService
-from app.services.monitoring import Monitoring
-import time
 from sqlalchemy import select
 from app.db.models.agent import Agent
 from app.db.models.knowledge_base import KnowledgeBase
@@ -151,12 +149,12 @@ async def link_knowledge(
     print(f"Knowledge IDs: {request_data.knowledge_ids}")
     print(f"Chunk Count: {request_data.chunk_count}")
 
-    # ✅ Ensure knowledge_ids is a valid list
+    # Ensure knowledge_ids is a valid list
     if not request_data.knowledge_ids or not isinstance(request_data.knowledge_ids, list):
         raise HTTPException(status_code=400, detail="Knowledge IDs must be a non-empty list")
 
     try:
-        # ✅ Ensure agent exists
+        # Ensure agent exists
         agent_exists = await db.execute(select(Agent).where(Agent.id == agent_id))
         if not agent_exists.scalars().first():
             raise HTTPException(
@@ -164,7 +162,7 @@ async def link_knowledge(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
-        # ✅ Process knowledge links
+        #  Process knowledge links
         for knowledge_id in request_data.knowledge_ids:
             knowledge_data = KnowledgeBaseCreate(
                 filename=f"knowledge_{knowledge_id}.txt",

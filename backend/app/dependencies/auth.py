@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import verify_clerk_token
 from app.db.repository.user import get_user, create_user
 from app.db.repository.organization import create_organization
+from app.db.repository.knowledge_base import create_knowledge_entry
 from app.db.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization import OrganizationCreate
@@ -21,10 +22,11 @@ async def get_current_user(
         db: AsyncSession = Depends(get_db)
 ) -> User:
     payload = verify_clerk_token(credentials)
+    print("Decoded Token Payload:", payload) 
     user_id = payload.get("sub")
-
-    #TODO: MJ: Add additional security checks (e.g. Roles and Permissions)
     print(f"User ID: {user_id}")
+    
+    #TODO: MJ: Add additional security checks (e.g. Roles and Permissions)
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -37,6 +39,7 @@ async def get_current_user(
     if not user:
         #SH: Step 1: Create orgainzation first
         org_data = OrganizationCreate(name="Default Organization")
+        print(f"User not found, creating new user with ID: {user_id}")
         organization = await create_organization(db, org_data, user_id)
 
         #SH: Step 2: Create a User
