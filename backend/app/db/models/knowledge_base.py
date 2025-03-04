@@ -1,7 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Table, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Table, func, Text
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.database import Base
 
+# Many-to-Many Relationship Table
+agent_knowledge = Table(
+    'agent_knowledge',
+    Base.metadata,
+    Column('agent_id', Integer, ForeignKey('agents.id', ondelete="CASCADE"), primary_key=True),
+    Column('knowledge_id', Integer, ForeignKey('knowledge_bases.id', ondelete="CASCADE"), primary_key=True)
+)
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
     
@@ -14,10 +22,5 @@ class KnowledgeBase(Base):
     chunk_count = Column(Integer, nullable=False)
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
 
-# Many-to-Many Relationship Table
-agent_knowledge = Table(
-    'agent_knowledge',
-    Base.metadata,  
-    Column('agent_id', Integer, ForeignKey('agents.id', ondelete="CASCADE"), primary_key=True),
-    Column('knowledge_id', Integer, ForeignKey('knowledge_bases.id', ondelete="CASCADE"), primary_key=True)
-)
+    # Relationship with agents
+    agents = relationship("Agent", secondary=agent_knowledge, back_populates="knowledge_bases")

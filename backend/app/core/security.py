@@ -1,76 +1,132 @@
 import requests
-from jose import jwt, JWTError
+from jose import jwt, jwk, JWTError
 from fastapi import HTTPException, status
-from app.core.config import settings
-from fastapi import Depends, HTTPException, status
-from datetime import datetime, timedelta
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.core.config import settings
+import logging
+from datetime import datetime
 
-http_bearer = HTTPBearer()
+logging.basicConfig(level=logging.INFO)
+
 
 #MJ: Clerk Secured Public Key URL
-CLERK_JWKS_URL = settings.CLERK_JWKS_URL
+http_bearer = HTTPBearer()
 
+#SH: Clerk configuration
+CLERK_JWKS_URL = settings.CLERK_JWKS_URL
+CLERK_ISSUER = "https://maximum-cardinal-66.clerk.accounts.dev"
 #MJ: Fetch Clerk JWKS Key and Algorithm
 def get_clerk_jwks() -> dict:
     #TODO: Add proper error handling
-    headers = {
-        "Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"
-    }
-    response = requests.get(CLERK_JWKS_URL, headers=headers)
-    if response.status_code != 200:
+    """Fetch Clerk's JWKS without authentication"""
+    try:
+        response = requests.get(CLERK_JWKS_URL, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to fetch Clerk JWKS",
+            detail=f"Clerk JWKS fetch failed: {str(e)}"
         )
-    return response.json() 
 
+def get_public_key(token: str, jwks_data: dict):
+    """Select correct key using kid from token header"""
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        
+        if not kid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing key ID in token header"
+            )
+            
+        for key in jwks_data.get("keys", []):
+            if key.get("kid") == kid:
+                return jwk.construct(key)
+                
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No matching key found in JWKS"
+        )
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token header: {str(e)}"
+        )
 #MJ: Verify Clerk Token
 def verify_clerk_token(credentials: HTTPAuthorizationCredentials) -> dict:
     #MJ: For Testing Only
-    if settings.PRODUCTION == False:
-        return create_test_payload()
-
-    #TODO: Add proper error handling
-
-    #Token from Credentials passed from caller (e.g. Get_current_user())
+    """Full JWT verification with proper error handling"""
     token = credentials.credentials
-
-    #Get Clerk JWKS Data
-    jwks_data = get_clerk_jwks()    
-
-    #Extract the algorithm and the key
-    algorithm = jwks_data["keys"][0]["alg"]
-    rsa_key = jwks_data["keys"][0]
-
-    options = {
-        "algorithms": [algorithm]
-    }
-
-    #MJ: Decoding the token with the rsa key
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token"
+        )
+    
     try:
+        # Get JWKS data
+        jwks_data = get_clerk_jwks()
+        
+        # Get correct public key
+        public_key = get_public_key(token, jwks_data)
+        
+        # Decode and validate token
         payload = jwt.decode(
             token,
-            key=rsa_key,  
-            options=options
+            key=public_key,
+            algorithms=["RS256"],
+            issuer=CLERK_ISSUER,
+            options={
+                "verify_signature": True,
+                "verify_aud": False,
+                "verify_iss": True,
+                "verify_exp": True,
+                "leeway": 30
+            }
         )
-        return payload
-
-    #MJ: Default Error - Need to optimize this    
+        
+        # Log the token payload for debugging
+        logging.info(f"Token Payload: {payload}")
+        
+        # Check for required claims
+        if "sub" not in payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing 'sub' claim"
+            )
+        
+        # Extract user information safely
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        email = payload.get("email")
+        
+        return {
+            "sub": payload.get("sub"),
+            "user_id": user_id,
+            "username": username,
+            "email": email
+        }
+#MJ: Default Error - Need to optimize this            
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.JWTClaimsError:
-        raise HTTPException(status_code=401, detail="Invalid claims")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-def create_test_payload():
-    payload = {
-        "sub": "user_id_123",
-        "email": "test@example.com",
-        "iat": datetime.now(),
-        "exp": datetime.now() + timedelta(hours=1),
-        "iss": "clerk"
-    }
-    return payload
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired"
+        )
+    except jwt.JWTClaimsError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid claims: {str(e)}"
+        )
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication error: {str(e)}"
+        )

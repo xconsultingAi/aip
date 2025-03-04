@@ -1,18 +1,21 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.agent import Agent as AgentDB
+from app.db.models.user import User
 from app.models.agent import AgentCreate, AgentConfigSchema
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 from app.models.agent import AgentOut
 from app.db.models.organization import Organization
+from app.db.models.knowledge_base import KnowledgeBase  
+from typing import List
 import logging
 from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 
-#MJ: This file will contain all the database operations related to the Agent model
+# MJ: This file will contain all the database operations related to the Agent model
 
 async def get_db():
     async with SessionLocal() as session:
@@ -26,6 +29,9 @@ async def get_db():
             raise
 
 async def get_agents(db: AsyncSession, user_id: int):
+    """
+    Retrieve all agents for a specific user.
+    """
     try:
         result = await db.execute(select(AgentDB).where(AgentDB.user_id == user_id))
         return result.scalars().all()  
@@ -36,6 +42,9 @@ async def get_agents(db: AsyncSession, user_id: int):
         )
 
 async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
+    """
+    Retrieve a specific agent by ID for a specific user.
+    """
     try:
         result = await db.execute(select(AgentDB).where((AgentDB.id == agent_id) & (AgentDB.user_id == user_id)))
         return result.scalars().first() 
@@ -49,37 +58,110 @@ async def create_agent(
     db: AsyncSession, 
     agent: AgentCreate, 
     user_id: str,  
-    organization_id: int  # Get from current_user
+    current_user: User,
+    knowledge_base_ids: List[int] = []
 ) -> AgentDB:
+    """
+    Create a new agent with default configuration.
+    """
+    if not current_user.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User have not any organization. Please Create First organization."
+        )
     try:
         db_agent = AgentDB(
             name=agent.name,
             description=agent.description,
             user_id=user_id,
-            organization_id=organization_id,  # Correct source
-
-            # Model configuration
-            model_name=agent.config.model_name,
-            temperature=agent.config.temperature,
-            max_length=agent.config.max_length,
-            system_prompt=agent.config.system_prompt,
-            config=agent.config.model_dump()  # Ensure JSON conversion
+            organization_id=current_user.organization_id,
+            config=AgentConfigSchema().model_dump()
         )
-
+        
+        # Link knowledge base
+        if knowledge_base_ids:
+            # Validate knowledge bases exist
+            result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.id.in_(knowledge_base_ids)))
+            existing_kbs = result.scalars().all()
+            if len(existing_kbs) != len(knowledge_base_ids):
+                raise HTTPException(status_code=400, detail="Invalid knowledge base IDs")
+            
+            # Link to agent
+            db_agent.knowledge_bases = existing_kbs
+        
         db.add(db_agent)
         await db.commit()
         await db.refresh(db_agent)
         return db_agent
+
     except SQLAlchemyError as e:
         await db.rollback()
-        logger.error(f"Agent creation error: {str(e)}")
+        logger.error(f"Error in Agent creation: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RA03: Database error while creating agent"
         )
 
-async def update_agent_config(db: AsyncSession, agent_id: int, config: AgentConfigSchema):
-    agent = await db.get(AgentDB, agent_id)
-    agent.config = config.model_dump()
-    await db.commit()
-    return agent
+async def update_agent_config(
+    db: AsyncSession, 
+    agent_id: int, 
+    config: AgentConfigSchema,
+    user_id: str
+) -> AgentDB:
+    """
+    Update the configuration of an existing agent.
+    """
+    try:
+        #Fetch the agent
+        result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id))
+        db_agent = result.scalars().first()
+        
+        if not db_agent:
+            logger.error(f"Agent with ID {agent_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent with ID {agent_id} not found"
+            )
+        
+        #Verify user permission
+        if db_agent.user_id != user_id:
+            logger.error(f"User {user_id} does not have permission to update agent {agent_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to update this agent"
+            )
+        
+        #Validate the config
+        if not isinstance(config, AgentConfigSchema):
+            logger.error("Invalid config format")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid configuration format"
+            )
+            
+        db_agent.config = config.model_dump()
+        
+        # Commit changes
+        await db.commit()
+        await db.refresh(db_agent)
+        
+        logger.info(f"Agent {agent_id} configuration updated successfully")
+        return db_agent
+    
+    except HTTPException as e:
+        logger.error(f"HTTPException in update_agent_config: {e.detail}")
+        raise e
+    except SQLAlchemyError as e:
+        logger.error(f"SQLAlchemyError in update_agent_config: {str(e)}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="RA04: Database error while updating agent configuration"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in update_agent_config: {str(e)}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="RA04: Unexpected error while updating agent configuration"
+        )
