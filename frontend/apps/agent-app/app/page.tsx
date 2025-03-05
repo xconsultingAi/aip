@@ -10,7 +10,7 @@ const HomePage = async () => {
   const token = await getToken();
 
   console.log(token)
-  const response = await fetch('http://127.0.0.1:8000/agents', {
+  const response = await fetch('http://127.0.0.1:8000/api/agents', {
     headers: {
       Authorization: `Bearer ${token}`,
     },
