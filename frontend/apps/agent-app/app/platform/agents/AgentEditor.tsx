@@ -40,7 +40,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
       </div>
 
       {/* MJ: Editor Tabs */}
-      <div className="flex space-x-4 border-b border-gray-300 dark:border-gray-700 mb-4">
+      <div className="flex space-x-4 border-b border-gray-300 dark:border-gray-700  mb-4">
         {tabs.map((tab) => (
           <button
             key={tab}
@@ -79,11 +79,11 @@ const ModelTabContent = ({ agent }: { agent: Agent }) => {
   }, [agent]);
 
   return (
-    <div className="space-y-2 bg-gray-100 p-6 rounded-lg shadow-lg">
+    <div className="space-y-2 bg-gray-100 dark:bg-gray-900 p-6 rounded-lg shadow-lg">
       <div>
         <label className="block text-sm font-medium">First Message</label>
         <textarea
-          className="w-full p-2 border bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 rounded"
+          className="w-full p-2 border bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded"
           placeholder="This is a blank template..."
           value={firstMessage} // HZ: Controlled component (fixes issue)
           onChange={(e) => setFirstMessage(e.target.value)}
@@ -91,14 +91,14 @@ const ModelTabContent = ({ agent }: { agent: Agent }) => {
       </div>
       <div>
         <label className="block text-sm font-medium">Provider</label>
-        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 rounded">
+        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded">
           <option>OpenAI</option>
           <option>Other Provider</option>
         </select>
       </div>
       <div>
         <label className="block text-sm font-medium">Model</label>
-        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 rounded">
+        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded">
           <option>gpt-3.5-turbo</option>
           <option>gpt-4</option>
         </select>
@@ -113,50 +113,41 @@ const ModelTabContent = ({ agent }: { agent: Agent }) => {
 
 // MJ: Placeholder components for additional tabs
 const KBTabContent = ({ agent }: { agent: Agent }) => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [knowledgeBase, setKnowledgeBase] = useState<string[]>([]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setSelectedFile(event.target.files[0]);
-    }
-  };
+  useEffect(() => {
+    // Simulating an API call with dummy data
+    const fetchDummyKnowledgeBase = () => {
+      setTimeout(() => {
+        setKnowledgeBase([
+          "AI Research Paper.pdf",
+          "Customer Support Guidelines.txt",
+          "Machine Learning Basics.pdf",
+          "Company Policies.txt",
+        ]);
+      }, 1000); // Simulate network delay
+    };
 
-  const handleUpload = async () => {
-    if (!selectedFile) return;
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      setUploadedFiles((prev) => [...prev, data.file]);
-    }
-  };
+    fetchDummyKnowledgeBase();
+  }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center text-center bg-gray-100 p-6 rounded-lg shadow-lg">
-      <h3 className="text-lg font-bold mb-2">Upload Knowledge Base</h3>
-      <input type="file" accept=".pdf,.txt" onChange={handleFileChange} className="mb-2" />
-      <button
-        onClick={handleUpload}
-        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-      >
-        Upload
-      </button>
-      <h4 className="mt-4 text-md font-semibold">Uploaded Files</h4>
-      <ul>
-        {uploadedFiles.map((file, index) => (
-          <li key={index} className="text-sm text-gray-700 dark:text-gray-300">{file}</li>
-        ))}
-      </ul>
+    <div className="flex flex-col items-center justify-center text-center dark:bg-gray-900 bg-gray-100 p-6 rounded-lg shadow-lg">
+      <h3 className="text-lg font-bold mb-2">Knowledge Base</h3>
+      <p className="text-sm">Please Select From Given Knowledgebase</p>
+      {knowledgeBase.length > 0 ? (
+        <ul className="text-left mt-2">
+          {knowledgeBase.map((file, index) => (
+            <li key={index} className="text-sm text-gray-700 p-1 bg-gray-200 rounded mb-2">
+              {file}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500 mt-2">Loading knowledge base...</p>
+      )}
     </div>
   );
 };
-
 const AdvancedTabContent = () => <div>Advanced settings go here...</div>;
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;

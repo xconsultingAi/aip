@@ -61,18 +61,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
   return (
     <div className="flex flex-col h-[500px] border border-gray-300 rounded-lg overflow-hidden">
       {/* Header with Back Button */}
-      <div className="flex justify-between items-center p-4 border-b border-gray-300 bg-gray-50">
+      <div className="flex justify-between items-center p-4 border-b border-gray-300 dark:bg-gray-900 bg-gray-50">
         <button
           onClick={onBack}
-          className="px-4 py-2 text-white bg-gray-600 rounded-lg hover:bg-gray-900"
+          className="px-4 py-2 text-white bg-gray-600 rounded-lg hover:bg-gray-700"
         >
           &larr; Back
         </button>
-        <h3 className="text-lg text-black font-medium">Chat Interface</h3>
+        <h3 className="text-lg block font-medium">Chat Interface</h3>
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 p-4 overflow-y-auto bg-gray-50 ">
+      <div className="flex-1 p-4 overflow-y-auto bg-gray-50 dark:bg-gray-900">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -105,18 +105,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
       </div>
 
       {/* Message Input Form */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-300">
+      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-300 dark:bg-gray-900">
         <div className="flex">
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            className="flex-1 p-2 border border-gray-300 rounded-l-md focus:outline-none"
+            className="flex-1 p-2 border border-gray-300 rounded-l-md focus:outline-none dark:bg-gray-900"
             placeholder="Type a message..."
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-green-500 text-white rounded-r-md hover:bg-green-600"
+            className="px-4 py-2 bg-green-500 text-white rounded-r-md hover:bg-green-600 dark:bg-green-800"
           >
             Send
           </button>

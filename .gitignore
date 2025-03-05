@@ -82,3 +82,4 @@ components/ui/node_modules/
 *.lock
 dist/
 coverage/
+backend/alembic.ini

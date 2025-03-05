@@ -82,7 +82,7 @@ export default function OrganizationPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+      <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md dark:bg-gray-900">
         <h1 className="text-2xl font-bold text-center mb-4">Organization Details</h1>
 
         {loading ? (
@@ -91,7 +91,7 @@ export default function OrganizationPage() {
           <div className="text-center">
             <p className="text-lg">You belong to <strong>{organization}</strong></p>
             <button 
-              className="mt-4 bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600"
+              className="mt-4 bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600"
               onClick={() => router.push('/')}
             >
               Go to Dashboard

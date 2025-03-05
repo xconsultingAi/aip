@@ -69,12 +69,12 @@ export default function FileUpload() {
 
   return (
     <div className="flex justify-center items-center h-screen">
-      <div className="p-6 border rounded-lg shadow-md bg-white max-w-sm w-full text-center">
+      <div className="p-6 border rounded-lg shadow-md bg-white max-w-sm w-full text-center dark:bg-gray-900">
         <input 
           type="file" 
           accept=".pdf,.txt" 
           onChange={handleFileChange} 
-          className="mb-4 w-full text-sm border p-2 rounded-lg"
+          className="mb-4 w-full text-sm border p-2 rounded-lg dark:bg-gray-800"
         />
         <button 
           onClick={handleUpload} 
@@ -88,10 +88,10 @@ export default function FileUpload() {
         {/* Uploaded Files List */}
         {uploadedFiles.length > 0 && (
           <div className="mt-4 text-left">
-            <h3 className="text-sm text-black font-semibold">Uploaded Files:</h3>
+            <h3 className="text-sm block font-semibold">Uploaded Files:</h3>
             <ul className="mt-2 space-y-1">
               {uploadedFiles.map((fileName, index) => (
-                <li key={index} className="text-sm text-gray-700 p-1 bg-gray-200 rounded">
+                <li key={index} className="text-sm block p-1 bg-gray-200 rounded dark:bg-gray-800">
                   {fileName}
                 </li>
               ))}

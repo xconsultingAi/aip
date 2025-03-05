@@ -6,7 +6,7 @@ authors = [
     {name = "HamayounBhatti",email = "88651217+HamayounBhatti@users.noreply.github.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13.1,<4"
+requires-python = ">=3.10,<4"
 dependencies = [
     "alembic (>=1.14.1,<2.0.0)",
     "annotated-types (>=0.7.0,<0.8.0)",
@@ -41,7 +41,15 @@ dependencies = [
     "urllib3 (>=2.3.0,<3.0.0)",
     "uvicorn (>=0.34.0,<0.35.0)",
     "watchfiles (>=1.0.4,<2.0.0)",
-    "websockets (>=15.0,<16.0)"
+    "websockets (>=15.0,<16.0)",
+    "langchain-openai (>=0.3.7,<0.4.0)",
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "langchain (>=0.3.20,<0.4.0)",
+    "tiktoken (>=0.9.0,<0.10.0)",
+    "langchain-community (>=0.3.19,<0.4.0)",
+    "pypdf2 (>=3.0.1,<4.0.0)",
+    "langchain-core (>=0.3.41,<0.4.0)",
+    "langchain-text-splitters (>=0.3.6,<0.4.0)"
 ]
 
 
