@@ -9,15 +9,63 @@ interface AgentEditorProps {
   agent: Agent | null;
 }
 
-// HZ: Modified `AgentEditor` to update when a new agent is selected
 const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
   const [activeTab, setActiveTab] = useState("Model");
   const [agentData, setAgentData] = useState<Agent | null>(agent);
 
-  // HZ: Ensure the editor updates when a new agent is clicked
+  //HZ: Model Tab State
+  const [modelConfig, setModelConfig] = useState({
+    firstMessage: "",
+    provider: "OpenAI",
+    model: "gpt-3.5-turbo",
+    maxLength: 100,
+    temperature: 0.7,
+  });
+
+  //HZ: Knowledge Base Tab State
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<number[]>([]);
+
+  //HZ: Update states when agent changes
   useEffect(() => {
     setAgentData(agent);
+    if (agent) {
+      setModelConfig((prev) => ({
+        ...prev,
+        firstMessage: agent.description || "",
+      }));
+    }
   }, [agent]);
+
+  const handlePublish = async () => {
+    if (!agentData) return;
+  
+    const payload = {
+      model_name: modelConfig.model, // "gpt-4" or "gpt-3.5-turbo"
+      temperature: modelConfig.temperature, // 0.7
+      max_length: modelConfig.maxLength, // 500
+      system_prompt: modelConfig.firstMessage, // "You are a helpful assistant"
+      knowledge_base_ids: selectedKnowledgeBaseIds, // []
+    };
+  
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/agent/${agentData?.id}/configure`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save agent configuration");
+      }
+  
+      alert("Configuration saved successfully!");
+    } catch (error) {
+      console.error("Error saving configuration:", error);
+      alert("Error saving configuration.");
+    }
+  };
 
   if (!agentData) {
     return (
@@ -29,26 +77,22 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
 
   return (
     <div className="w-full h-full flex flex-col bg-gray-200 dark:bg-gray-800 p-4">
-      {/* MJ: Editor Header */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {agentData.name} {/* HZ: Dynamically updating agent name */}
+          {agentData.name}
         </h2>
-        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+        <button onClick={handlePublish} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
           Publish
         </button>
       </div>
 
-      {/* MJ: Editor Tabs */}
       <div className="flex space-x-4 border-b border-gray-300 dark:border-gray-700  mb-4">
         {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-sm font-medium ${
-              activeTab === tab
-                ? "text-green-600 border-b-2 border-green-600"
-                : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              activeTab === tab ? "text-green-600 border-b-2 border-green-600" : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
             }`}
           >
             {tab}
@@ -56,10 +100,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
         ))}
       </div>
 
-      {/* MJ: Tab Content Rendering */}
       <div className="flex-1 overflow-y-auto p-4 bg-gray-200 dark:bg-gray-800">
-        {activeTab === "Model" && <ModelTabContent agent={agentData} />}
-        {activeTab === "Knowledgebase" && <KBTabContent agent={agentData}/>}
+        {activeTab === "Model" && <ModelTabContent modelConfig={modelConfig} setModelConfig={setModelConfig} />}
+        {activeTab === "Knowledgebase" && <KBTabContent selectedIds={selectedKnowledgeBaseIds} setSelectedIds={setSelectedKnowledgeBaseIds} />}
         {activeTab === "Advanced" && <AdvancedTabContent />}
         {activeTab === "Analysis" && <AnalysisTabContent />}
       </div>
@@ -69,15 +112,8 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
 
 export default AgentEditor;
 
-// HZ: Updated ModelTabContent to use a controlled component for `description`
-const ModelTabContent = ({ agent }: { agent: Agent }) => {
-  const [firstMessage, setFirstMessage] = useState(agent.description || "");
-
-  // HZ: Update description when agent changes
-  useEffect(() => {
-    setFirstMessage(agent.description || "");
-  }, [agent]);
-
+//HZ: Model Tab Component
+const ModelTabContent = ({ modelConfig, setModelConfig }: { modelConfig: any; setModelConfig: any }) => {
   return (
     <div className="space-y-2 bg-gray-100 dark:bg-gray-900 p-6 rounded-lg shadow-lg">
       <div>
@@ -85,69 +121,92 @@ const ModelTabContent = ({ agent }: { agent: Agent }) => {
         <textarea
           className="w-full p-2 border bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded"
           placeholder="This is a blank template..."
-          value={firstMessage} // HZ: Controlled component (fixes issue)
-          onChange={(e) => setFirstMessage(e.target.value)}
+          value={modelConfig.firstMessage}
+          onChange={(e) => setModelConfig((prev: any) => ({ ...prev, firstMessage: e.target.value }))}
         />
       </div>
       <div>
         <label className="block text-sm font-medium">Provider</label>
-        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded">
+        <select
+          className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded"
+          value={modelConfig.provider}
+          onChange={(e) => setModelConfig((prev: any) => ({ ...prev, provider: e.target.value }))}
+        >
           <option>OpenAI</option>
           <option>Other Provider</option>
         </select>
       </div>
       <div>
         <label className="block text-sm font-medium">Model</label>
-        <select className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded">
+        <select
+          className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded"
+          value={modelConfig.model}
+          onChange={(e) => setModelConfig((prev: any) => ({ ...prev, model: e.target.value }))}
+        >
           <option>gpt-3.5-turbo</option>
           <option>gpt-4</option>
         </select>
       </div>
       <div>
+        <label className="block text-sm font-medium">Max Length</label>
+        <input
+          type="number"
+          min="10"
+          className="w-full p-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 rounded"
+          value={modelConfig.maxLength}
+          onChange={(e) => setModelConfig((prev: any) => ({ ...prev, maxLength: e.target.value }))}
+        />
+      </div>
+      <div>
         <label className="block text-sm font-medium">Temperature</label>
-        <input type="range" min="0" max="1" step="0.1" className="w-full" />
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.1"
+          className="w-full"
+          value={modelConfig.temperature}
+          onChange={(e) => setModelConfig((prev: any) => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+        />
       </div>
     </div>
   );
 };
 
-// MJ: Placeholder components for additional tabs
-const KBTabContent = ({ agent }: { agent: Agent }) => {
-  const [knowledgeBase, setKnowledgeBase] = useState<string[]>([]);
+//HZ: Knowledge Base Tab Component
+const KBTabContent = ({ selectedIds, setSelectedIds }: { selectedIds: number[]; setSelectedIds: React.Dispatch<React.SetStateAction<number[]>> }) => {
+  const [knowledgeBase, setKnowledgeBase] = useState<{ id: number; name: string }[]>([]);
 
   useEffect(() => {
-    // Simulating an API call with dummy data
-    const fetchDummyKnowledgeBase = () => {
-      setTimeout(() => {
-        setKnowledgeBase([
-          "AI Research Paper.pdf",
-          "Customer Support Guidelines.txt",
-          "Machine Learning Basics.pdf",
-          "Company Policies.txt",
-        ]);
-      }, 1000); // Simulate network delay
+    const fetchKnowledgeBase = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/knowledgebase");
+        const data = await response.json();
+        setKnowledgeBase(data);
+      } catch (error) {
+        console.error("Error fetching knowledge base:", error);
+      }
     };
-
-    fetchDummyKnowledgeBase();
+    console.log("Knowledge Base Data:", knowledgeBase);
+    fetchKnowledgeBase();
   }, []);
 
+  const toggleSelection = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center text-center dark:bg-gray-900 bg-gray-100 p-6 rounded-lg shadow-lg">
-      <h3 className="text-lg font-bold mb-2">Knowledge Base</h3>
-      <p className="text-sm">Please Select From Given Knowledgebase</p>
-      {knowledgeBase.length > 0 ? (
-        <ul className="text-left mt-2">
-          {knowledgeBase.map((file, index) => (
-            <li key={index} className="text-sm text-gray-700 p-1 bg-gray-200 rounded mb-2">
-              {file}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-gray-500 mt-2">Loading knowledge base...</p>
-      )}
+    <div className="space-y-2">
+      {knowledgeBase.map((file) => (
+        <button key={file.id} className={`block w-full p-2 text-left rounded ${selectedIds.includes(file.id) ? "bg-green-500 text-white" : "bg-gray-200 text-gray-700"}`} onClick={() => toggleSelection(file.id)}>
+          {file.name}
+        </button>
+      ))}
     </div>
   );
 };
+
 const AdvancedTabContent = () => <div>Advanced settings go here...</div>;
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
