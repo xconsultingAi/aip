@@ -8,32 +8,41 @@ export default function OrganizationPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
   const router = useRouter();
-  console.log({user});
-  const organization_id = 1;
   const [organization, setOrganization] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     const fetchOrganization = async () => {
       if (!user) return; // HZ: Ensure user is authenticated before fetching
       
       try {
+        // HZ: Getting Token
         const token = await getToken();
+        // HZ: Getting User Data From Database
+        const users = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+        const user_data = await users.json();
+        const organization_id = user_data?.data.organization_id;
         const res = await fetch(`http://127.0.0.1:8000/api/organizations/${organization_id}`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${token}`,
           },
         });
-
+        // HZ: Check if the response is successful
         if (!res.ok) {
           throw new Error("Failed to fetch organization details.");
         }
-
+        //HZ: Attempt to parse the JSON response
         const data = await res.json();
         if (data?.name) {
-          setOrganization(data.name); // HZ: Store the existing organization name
+          // HZ: Show the existing organization name
+          setOrganization(data.name); 
         }
       } catch (error) {
         console.error("Error fetching organization:", error);
@@ -64,15 +73,11 @@ export default function OrganizationPage() {
         },
         body: JSON.stringify({ name }),
       });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || "Failed to create organization.");
-      }
-
+      //HZ: Attempt to parse the JSON response
       const data = await res.json();
       console.log("Organization created successfully:", data);
-      setOrganization(data.name); // HZ: Update state with the new organization
+      // HZ: Update state with the new organization
+      setOrganization(data.name); 
     } catch (error) {
       setError(error.message || "Something went wrong.");
     } finally {
@@ -86,8 +91,10 @@ export default function OrganizationPage() {
         <h1 className="text-2xl font-bold text-center mb-4">Organization Details</h1>
 
         {loading ? (
-          <p className="text-center">Loading...</p> // HZ: Show loading state
-        ) : organization ? ( // HZ: If an organization exists, show details
+          // HZ: Show loading state
+          <p className="text-center">Loading...</p> 
+          // HZ: If an organization exists, show details
+        ) : organization ? ( 
           <div className="text-center">
             <p className="text-lg">You belong to <strong>{organization}</strong></p>
             <button 
@@ -106,11 +113,13 @@ export default function OrganizationPage() {
               required
               className="p-2 border border-gray-300 rounded-md"
             />
-            {error && <p className="text-red-500">{error}</p>} {/* HZ: Show error messages */}
+            {/* HZ: Show error messages */}
+            {error && <p className="text-red-500">{error}</p>} 
+            // HZ: Disable button while submitting
             <button
               type="submit"
               className="bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 disabled:opacity-50"
-              disabled={loading} // HZ: Disable button while submitting
+              disabled={loading} 
             >
               {loading ? "Submitting..." : "Submit"}
             </button>
