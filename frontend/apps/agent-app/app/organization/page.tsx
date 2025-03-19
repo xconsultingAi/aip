@@ -20,14 +20,14 @@ export default function OrganizationPage() {
         // HZ: Getting Token
         const token = await getToken();
         // HZ: Getting User Data From Database
-        const users = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
+        const users = await fetch(`http://127.0.0.1:8000/api/users/`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${token}`,
           },
         });
         const user_data = await users.json();
-        const organization_id = user_data?.data.organization_id;
+        const organization_id = user_data?.data[0].organization_id;
         const res = await fetch(`http://127.0.0.1:8000/api/organizations/${organization_id}`, {
           method: "GET",
           headers: {
@@ -114,8 +114,8 @@ export default function OrganizationPage() {
               className="p-2 border border-gray-300 rounded-md"
             />
             {/* HZ: Show error messages */}
-            {error && <p className="text-red-500">{error}</p>} 
-            // HZ: Disable button while submitting
+            {error && <p className="text-red-500">{error}</p>}
+            {/* HZ: Disable button while submitting */} 
             <button
               type="submit"
               className="bg-green-500 text-white py-2 px-4 rounded-md hover:bg-green-600 disabled:opacity-50"
