@@ -14,7 +14,7 @@ const HomePage = async () => {
   if (!token) {
     throw new Error("Failed to get access token");
   }
-  const res = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
+  const res = await fetch(`http://127.0.0.1:8000/api/users/`, {
     method: "GET",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -25,7 +25,7 @@ const HomePage = async () => {
     throw new Error("Failed to Fetch User Data");
   }
   const user_data = await res.json();
-  if (user_data.data.organization_id == null) {
+  if (user_data.data[0].organization_id == null) {
     // HZ: Redirect To Organization Page If User Login First Time
     redirect("/organization"); 
   }
