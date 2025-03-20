@@ -7,10 +7,12 @@ from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
 from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config
 from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_knowledge
 from app.services.llm_services import generate_llm_response
+from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.models.user import UserOut as User
 from sqlalchemy import select
+from typing import List
 from app.db.models.agent import Agent
 from app.db.models.knowledge_base import KnowledgeBase
 
@@ -55,21 +57,31 @@ async def read_agent(
 @router.post("/", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 async def create_new_agent(
     agent: AgentCreate,
+    knowledge_ids: List[int] = Body([]),  # Added knowledge_ids parameter
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new agent with default configuration.
+    Create a new agent with default configuration and link it to knowledge bases.
     """
     try:
+        # Validate KBs belong to the same organization as the user
+        await validate_knowledge_access(db, knowledge_ids, current_user.organization_id)
+        
+        # Create the agent
         new_agent = await create_agent(
             db=db,
             agent=agent,
             user_id=current_user.user_id,
-            current_user=current_user 
-        )        
+            current_user=current_user
+        )   
+        
+        # Associate agent with selected knowledge bases
+        await update_agent_knowledge(db, new_agent.id, knowledge_ids)
+        
+        # Prepare response
         agent_dict = new_agent.__dict__
-        agent_dict.pop('_sa_instance_state', None)  
+        agent_dict.pop('_sa_instance_state', None)
         return success_response(
             "Agent created successfully",
             AgentOut(**agent_dict)
@@ -100,7 +112,7 @@ async def update_agent_configuration(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Update the configuration of an existing agent.
+    Update the configuration of an existing agent, including knowledge base associations.
     """
     # Validate configuration
     if config.model_name not in ALLOWED_MODELS:
@@ -119,26 +131,35 @@ async def update_agent_configuration(
             http_status=status.HTTP_400_BAD_REQUEST
         )
     
-    # validation for knowledge base IDs
+    # Validate knowledge base IDs (Ensuring they belong to the agent's organization)
     if config.knowledge_base_ids:
+        agent = await get_agent(db, agent_id, current_user.user_id)  # Fetch agent details
+        await validate_knowledge_access(db, config.knowledge_base_ids, agent.organization_id)  # Validate KB access
+        
+        # Fetch existing KB IDs to check validity
         result = await db.execute(
             select(KnowledgeBase.id).where(KnowledgeBase.id.in_(config.knowledge_base_ids))
         )
         existing_ids = result.scalars().all()
+        
         if len(existing_ids) != len(config.knowledge_base_ids):
             return error_response("Invalid knowledge base IDs", 400)
     
     try:
-        # agent configuration
+        # Update agent configuration
         updated_agent = await update_agent_config(
             db=db,
             agent_id=agent_id,
             config=config,
             user_id=current_user.user_id
         )
+        
+        # Update agent's knowledge bases
+        await update_agent_knowledge(db, agent_id, config.knowledge_base_ids)
 
+        # Prepare response
         agent_dict = updated_agent.__dict__
-        agent_dict.pop('_sa_instance_state', None)  
+        agent_dict.pop('_sa_instance_state', None)
         
         return success_response(
             "Agent configuration updated successfully",
@@ -173,6 +194,7 @@ async def chat_with_agent(
         # Generating the response using the agent configuration and knowledge base
         response = await generate_llm_response(
             prompt=prompt,
+            db= db,
             agent_config=agent.config,
             knowledge_bases=knowledge_bases  
         )

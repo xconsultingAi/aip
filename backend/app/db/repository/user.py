@@ -7,7 +7,6 @@ from app.db.models.user import User
 logging.basicConfig(level=logging.INFO)
 
 # MJ: This file will contain all the database operations related to the User model
-
 async def get_user(db: AsyncSession, user_id: str) -> User | None:
     logging.info(f"Attempting to fetch user with user_id: {user_id}")
     result = await db.execute(select(User).where(User.user_id == user_id))
@@ -35,6 +34,6 @@ async def create_user(db: AsyncSession, user_id: str, name: str = None,
         raise
     return user
 
-async def get_all_users(db: AsyncSession):
-    result = await db.execute(select(User))
-    return result.scalars().all()
+# async def get_all_users(db: AsyncSession):
+#     result = await db.execute(select(User))
+#     return result.scalars().all()

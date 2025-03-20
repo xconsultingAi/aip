@@ -3,7 +3,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import openai
 from openai import AsyncOpenAI
 from app.core.config import settings
-from app.core.exceptions import llm_service_error, invalid_api_key_error, openai_exception
+from app.core.exceptions import LLMServiceError, InvalidAPIKeyError, OpenAIException
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +44,13 @@ class OpenAIClient:
             }
         except openai.AuthenticationError:
             logger.error("Authentication error")
-            raise invalid_api_key_error()
+            raise InvalidAPIKeyError()
         except openai.RateLimitError:
             logger.warning("Rate limit exceeded")
-            raise llm_service_error("API rate limit exceeded")
+            raise LLMServiceError("API rate limit exceeded")
         except Exception as e:
             logger.error(f"OpenAI API error: {str(e)}")
-            raise openai_exception("API error occurred")
+            raise OpenAIException("API error occurred")
 
     def _calculate_cost(self, usage, model):
         pricing = {

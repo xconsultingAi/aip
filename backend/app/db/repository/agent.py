@@ -6,8 +6,10 @@ from app.models.agent import AgentCreate, AgentConfigSchema
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 from app.models.agent import AgentOut
+from app.db.models.knowledge_base import agent_knowledge
 from app.db.models.organization import Organization
 from app.db.models.knowledge_base import KnowledgeBase  
+from sqlalchemy.sql.expression import delete, insert
 from typing import List
 import logging
 from app.db.database import SessionLocal
@@ -80,14 +82,8 @@ async def create_agent(
         
         # Link knowledge base
         if knowledge_base_ids:
-            # Validate knowledge bases exist
-            result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.id.in_(knowledge_base_ids)))
-            existing_kbs = result.scalars().all()
-            if len(existing_kbs) != len(knowledge_base_ids):
-                raise HTTPException(status_code=400, detail="Invalid knowledge base IDs")
-            
-            # Link to agent
-            db_agent.knowledge_bases = existing_kbs
+            await validate_knowledge_access(db, knowledge_base_ids, current_user.organization_id)
+            await update_agent_knowledge(db, db_agent.id, knowledge_base_ids)
         
         db.add(db_agent)
         await db.commit()
@@ -165,3 +161,38 @@ async def update_agent_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RA04: Unexpected error while updating agent configuration"
         )
+
+async def validate_knowledge_access(db: AsyncSession, knowledge_ids: List[int], organization_id: int):
+    # Check all KBs belong to the same organization
+    result = await db.execute(
+        select(KnowledgeBase)
+        .where(
+            KnowledgeBase.id.in_(knowledge_ids),
+            KnowledgeBase.organization_id == organization_id
+        )
+    )
+    valid_kbs = result.scalars().all()
+    if len(valid_kbs) != len(knowledge_ids):
+        invalid_ids = set(knowledge_ids) - {kb.id for kb in valid_kbs}
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid knowledge base IDs for organization: {invalid_ids}"
+        )
+
+async def update_agent_knowledge(
+    db: AsyncSession,
+    agent_id: int,
+    knowledge_ids: List[int]
+):
+    # Clear existing associations
+    await db.execute(delete(agent_knowledge).where(agent_knowledge.c.agent_id == agent_id))
+    
+    # Add new associations
+    if knowledge_ids:
+        insert_stmt = insert(agent_knowledge).values([
+            {"agent_id": agent_id, "knowledge_id": kb_id}
+            for kb_id in knowledge_ids
+        ])
+        await db.execute(insert_stmt)
+    
+    await db.commit()
