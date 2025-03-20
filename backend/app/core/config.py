@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional, List
+from typing import List
 
 class Settings(BaseSettings):
     #MJ: Added these in .env
@@ -7,10 +7,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "My FastAPI App"
     DEBUG: bool = False
     CLERK_JWKS_URL: str
+    CLERK_ISSUER: str 
     CLERK_SECRET_KEY: str
     ALLOWED_ORIGINS: str = "*"  # CORS
     DATABASE_URL: str = "DATABASE_URL"  # a default if not in .env
     PRODUCTION: bool = False
+
     #SH: for API key
     OPENAI_API_KEY: str 
     OPENAI_API_URL: str = "https://api.openai.com/v1/chat/completions"
@@ -22,12 +24,11 @@ class Settings(BaseSettings):
     #SH: for Knowledge base
     MAX_FILE_SIZE: int = 10_485_760
     ALLOWED_CONTENT_TYPES: List[str] = ["application/pdf", "text/plain"]
-
     CHUNK_SIZE: int = 1000
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     KNOWLEDGE_DIR: str = "data"
     CHROMA_DIR: str = "chroma"
-
+    MAX_KNOWLEDGE_BASES_PER_AGENT: int = 10
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     EMAIL_SENDER: str = "no-reply@example.com" 
     ###### END ####

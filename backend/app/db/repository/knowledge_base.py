@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.knowledge_base import KnowledgeBase, agent_knowledge 
 from app.models.knowledge_base import KnowledgeBaseCreate
 from fastapi import HTTPException, status
-from sqlalchemy import select, insert
+from sqlalchemy import select
 from typing import List, Optional
 
 async def create_knowledge_entry(
@@ -10,13 +10,12 @@ async def create_knowledge_entry(
     knowledge_data: KnowledgeBaseCreate, 
     file_size: int,
     chunk_count: int,
-    agent_id: Optional[int] = None, 
     knowledge_ids: Optional[List[int]] = None 
 ):
     # knowledge_data is an instance of KnowledgeBaseCreate
     if not isinstance(knowledge_data, KnowledgeBaseCreate):
         raise TypeError("knowledge_data must be a KnowledgeBaseCreate instance")
-    
+
     # knowledge_ids is a list
     if knowledge_ids is None:
         knowledge_ids = []
@@ -26,22 +25,11 @@ async def create_knowledge_entry(
         db_knowledge = KnowledgeBase(
             **knowledge_data.model_dump(),
             file_size=file_size,
-            chunk_count=chunk_count,
-            agent_id=agent_id 
+            chunk_count=chunk_count
         )
         db.add(db_knowledge)
         await db.commit()
         await db.refresh(db_knowledge)  
-
-        # Link the new knowledge base to the agent
-        if agent_id:
-            # Link the newly created knowledge base to the agent
-            stmt = insert(agent_knowledge).values(
-                agent_id=agent_id,
-                knowledge_id=db_knowledge.id
-            )
-            await db.execute(stmt)
-            await db.commit()
 
         # Return the knowledge base entry as a dictionary
         return {
