@@ -20,14 +20,14 @@ export default function OrganizationPage() {
         // HZ: Getting Token
         const token = await getToken();
         // HZ: Getting User Data From Database
-        const users = await fetch(`http://127.0.0.1:8000/api/users/`, {
+        const users = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${token}`,
           },
         });
         const user_data = await users.json();
-        const organization_id = user_data?.data[0].organization_id;
+        const organization_id = user_data?.data.organization_id;
         const res = await fetch(`http://127.0.0.1:8000/api/organizations/${organization_id}`, {
           method: "GET",
           headers: {

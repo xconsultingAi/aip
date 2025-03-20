@@ -94,7 +94,7 @@ export default function CreateAgentPage() {
           <label className="block font-medium">Agent Name</label>
           <input
             type="text"
-            value={name}
+            value={name || ""}
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter agent name"
             className="w-full p-2 border rounded"
@@ -106,7 +106,7 @@ export default function CreateAgentPage() {
         <div>
           <label className="block font-medium">Description</label>
           <textarea
-            value={description}
+            value={description || ""}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Enter agent description"
             className="w-full p-2 border rounded"
@@ -118,7 +118,7 @@ export default function CreateAgentPage() {
         <div>
           <input
             type="hidden"
-            value={organization_id}
+            value={organization_id || ""}
             onChange={(e) => setOrganizationId(e.target.value)}
             placeholder="Enter organization ID"
             className="w-full p-2 border rounded"

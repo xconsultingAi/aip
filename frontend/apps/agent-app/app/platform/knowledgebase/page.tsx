@@ -26,14 +26,14 @@ export default function FileUpload() {
         const token = await getToken();
         
         // HZ: Fetch organization ID from user's metadata
-        const orgRes = await fetch(`http://127.0.0.1:8000/api/users/`, {
+        const orgRes = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` }
         });
         const orgData = await orgRes.json();
-        console.log(orgData?.data[0].organization_id);
+        console.log(orgData?.data.organization_id);
         
-        setOrganizationId(orgData?.data[0].organization_id || null);
+        setOrganizationId(orgData?.data.organization_id || null);
 
         // HZ: Load existing knowledge base files from API
         const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge_base`, {
