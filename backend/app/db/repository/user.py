@@ -6,8 +6,7 @@ from app.db.models.user import User
 # Logging Configuration
 logging.basicConfig(level=logging.INFO)
 
-# MJ: Yeh file User model ke related database operations ko handle karegi
-
+# MJ: This file will contain all the database operations related to the User model
 async def get_user(db: AsyncSession, user_id: str) -> User | None:
     logging.info(f"Attempting to fetch user with user_id: {user_id}")
     result = await db.execute(select(User).where(User.user_id == user_id))
@@ -18,12 +17,12 @@ async def get_user(db: AsyncSession, user_id: str) -> User | None:
         logging.info(f"No user found with user_id: {user_id}")
     return user
 
-async def create_user(db: AsyncSession, user_id: int, name: str = None,
-                      organization_id: int = None) -> User:
+async def create_user(db: AsyncSession, user_id: str, name: str = None,
+                      email: str = None,organization_id: int = None) -> User:
     logging.info(f"Creating user with user_id: {user_id}, name: {name}, org_id: {organization_id}")
-    user = User(user_id=user_id, name=name,organization_id=organization_id 
+    user = User(user_id=user_id, name=name,email=email,organization_id=organization_id 
     )
-    
+ # parameter types and add email   
     db.add(user)
     try:
         await db.commit()
@@ -34,3 +33,7 @@ async def create_user(db: AsyncSession, user_id: int, name: str = None,
         logging.error(f"Error creating user {user_id}: {str(e)}")
         raise
     return user
+
+# async def get_all_users(db: AsyncSession):
+#     result = await db.execute(select(User))
+#     return result.scalars().all()

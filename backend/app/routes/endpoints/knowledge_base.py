@@ -28,6 +28,25 @@ async def upload_knowledge(
     # ✅ Read file content and reset cursor
     content = await file.read()
     file.file.seek(0)  # Reset file cursor
+
+from PyPDF2 import PdfReader  # type: ignore
+
+router = APIRouter(tags=["knowledge"])
+
+@router.post("/Upload_knowledge_base", response_model=KnowledgeBaseOut)
+async def upload_knowledge(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Ensure user belongs to an organization
+    if not current_user.organization_id:
+        return error_response("User must belong to an organization to upload KB", 400)
+
+    # Read file content and reset cursor
+    content = await file.read()
+    file.file.seek(0)
+    
     file_size = len(content)
 
     if file_size > settings.MAX_FILE_SIZE:
@@ -99,3 +118,4 @@ async def upload_knowledge(
         if os.path.exists(file_path):
             os.remove(file_path)
         return error_response(str(e), 500)
+

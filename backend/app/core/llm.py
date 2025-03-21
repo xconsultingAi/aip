@@ -1,10 +1,9 @@
 import logging
-from typing import Dict
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 import openai
 from openai import AsyncOpenAI
 from app.core.config import settings
-from app.core.exceptions import OpenAIException
+from app.core.exceptions import LLMServiceError, InvalidAPIKeyError, OpenAIException
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +21,8 @@ class OpenAIClient:
         retry=retry_if_exception_type((openai.APIError, openai.APITimeoutError, openai.APIConnectionError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    async def generate(self, model: str, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> Dict:
-        """Secure OpenAI API call with automatic fallback"""
+    async def generate(self, model: str, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> dict:
         try:
-            return await self._call_api(model, prompt, system_prompt, temperature, max_tokens)
-        except openai.APIError as e:
-            logger.warning(f"Falling back to {settings.FALLBACK_MODEL} due to error: {str(e)}")
-            return await self._call_api(settings.FALLBACK_MODEL, prompt, system_prompt, temperature, max_tokens)
-    
-    async def _call_api(self, model, prompt, system_prompt, temperature, max_tokens):
-        """Actual API call handling"""
-        try:
-            logger.info(f"OpenAI request - Model: {model}, Tokens: {max_tokens}")
-            
             response = await self.client.chat.completions.create(
                 model=model,
                 messages=[
@@ -56,16 +44,15 @@ class OpenAIClient:
             }
         except openai.AuthenticationError:
             logger.error("Authentication error")
-            raise OpenAIException("Invalid API credentials")
+            raise InvalidAPIKeyError()
         except openai.RateLimitError:
             logger.warning("Rate limit exceeded")
-            raise OpenAIException("API rate limit exceeded")
+            raise LLMServiceError("API rate limit exceeded")
         except Exception as e:
             logger.error(f"OpenAI API error: {str(e)}")
             raise OpenAIException("API error occurred")
-    
+
     def _calculate_cost(self, usage, model):
-        """Cost calculation based on OpenAI pricing"""
         pricing = {
             "gpt-4": {"input": 0.03/1000, "output": 0.06/1000},
             "gpt-3.5-turbo": {"input": 0.0015/1000, "output": 0.002/1000},

@@ -38,7 +38,7 @@ const Sidebar = () => {
             {/* Logo */}
             <div className="p-4 flex items-center justify-between">
             
-                <h1 className="text-xl font-bold text-grey-900 dark:text-white">{process.env.NEXT_PUBLIC_APP_NAME || "App Name"}</h1>
+                <h1 className="text-xl font-bold text-grey-900 dark:text-white">{process.env.NEXT_PUBLIC_APP_NAME || "AIP"}</h1>
                 <ToggleTheme />
             </div>
 
@@ -62,7 +62,7 @@ const Sidebar = () => {
                         defaultOpen={true} // Optional, to make this menu open by default
                     />
 
-                    {/* Platform Menu */}
+                    {/* Activity Menu */}
                     <MenuGroup
                         title="Activity"
                         menuItems={
@@ -74,7 +74,18 @@ const Sidebar = () => {
                         }
                         defaultOpen={true} // Optional, to make this menu open by default
                     />
-
+                    {/* Settings Menu */}
+                    <MenuGroup
+                        title="Settings"
+                        menuItems={
+                            <>
+                                <MenuItem label="Organization" icon={<UserGroupIcon />} path="/organization" />
+                                {/* <MenuItem label="Widget Log" icon={<ChatBubbleLeftIcon />} path="/platform/widget" /> */}
+                                
+                            </>
+                        }
+                        defaultOpen={true} // Optional, to make this menu open by default
+                    />
 
                     {/* Add more collapsible menus */}
                     {/* Example */}

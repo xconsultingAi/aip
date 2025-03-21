@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Float, Text, JSON
 from sqlalchemy.orm import relationship
-import json
 from app.db.database import Base
+from app.db.models.knowledge_base import agent_knowledge
 
 # MJ: This is database model used for Migrations & CRUD operations
 class Agent(Base):
@@ -20,6 +20,6 @@ class Agent(Base):
     config = Column(JSON, nullable=False, server_default='{}')
 
     # SH: Relationships with user and organization table
-    organization = relationship("Organization", back_populates="agents")
+    knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents")
     owner = relationship("User", back_populates="agents", foreign_keys=[user_id])
     organization = relationship("Organization", back_populates="agents", foreign_keys=[organization_id])

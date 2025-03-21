@@ -8,6 +8,7 @@ from app.db.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.organization import OrganizationCreate
 from app.db.models.user import User
+from typing import List
 
 http_bearer = HTTPBearer()
 
@@ -37,26 +38,35 @@ async def get_current_user(
     user = await get_user(db, user_id)
     
     if not user:
+
         #SH: Step 1: Create orgainzation first
         org_data = OrganizationCreate(name="Default Organization")
         print(f"User not found, creating new user with ID: {user_id}")
         organization = await create_organization(db, org_data, user_id)
 
         #SH: Step 2: Create a User
+
         user = await create_user(
             db, 
             user_id=user_id,
-            name=payload.get("name"), 
-            organization_id=organization.id
-        )
+            name=payload.get("username"),
+            email=payload.get("email"), 
+            organization_id=None 
+        )  
         await db.refresh(user)
-
-    #SH: Ensure existing users also have an organization (backward compatibility)
-    if not user.organization_id:
-        org_data = OrganizationCreate(name="Recovery Organization")
-        organization = await create_organization(db, org_data, user_id)
-        user.organization_id = organization.id
-        await db.commit()
-        await db.refresh(user)
-
+        
+    # if not user.organization_id:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    #         detail="User has no organization. Redirect to organization creation page.",
+    #         headers={"Location": "/create-organization"}
+    #     )
     return user
+
+async def validate_knowledge_access(
+    knowledge_ids: List[int],
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Check user has access to all knowledge bases
+    pass
