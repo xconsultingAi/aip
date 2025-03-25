@@ -53,7 +53,7 @@ export default function CreateAgentPage() {
     e.preventDefault();
 
     //HZ: Prepare the data to be sent to the API
-    const agentData = { name, description, organization_id };
+    const agentData = { agent: { name, description, organization_id } };
     const token = await getToken();
 
     try {

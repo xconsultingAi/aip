@@ -27,6 +27,8 @@ export default function OrganizationPage() {
           },
         });
         const user_data = await users.json();
+        console.log(user_data);
+        
         const organization_id = user_data?.data.organization_id;
         const res = await fetch(`http://127.0.0.1:8000/api/organizations/${organization_id}`, {
           method: "GET",

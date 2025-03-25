@@ -14,7 +14,7 @@ http_bearer = HTTPBearer()
 
 #SH: Clerk configuration
 CLERK_JWKS_URL = settings.CLERK_JWKS_URL
-CLERK_ISSUER = "https://maximum-cardinal-66.clerk.accounts.dev"
+CLERK_ISSUER = settings.CLERK_ISSUER
 #MJ: Fetch Clerk JWKS Key and Algorithm
 def get_clerk_jwks() -> dict:
     #TODO: Add proper error handling

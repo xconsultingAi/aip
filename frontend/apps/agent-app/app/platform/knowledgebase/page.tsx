@@ -24,7 +24,7 @@ export default function FileUpload() {
       
       try {
         const token = await getToken();
-        
+        console.log(token);
         // HZ: Fetch organization ID from user's metadata
         const orgRes = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
           method: "GET",
@@ -36,16 +36,28 @@ export default function FileUpload() {
         setOrganizationId(orgData?.data.organization_id || null);
 
         // HZ: Load existing knowledge base files from API
-        const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge_base`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const filesData = await filesRes.json();
-        setUploadedFiles(filesData);
-      } catch (error) {
-        setMessage("Failed to load existing files");
+      const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge_base`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const filesData = await filesRes.json();
+
+      if (filesData.success && Array.isArray(filesData.data)) {
+        //HZ: Limit to the latest 5 files
+        const formattedFiles = filesData.data.slice(0, 5).map(file => ({
+          id: file.id,
+          name: file.filename //HZ: Ensure correct property mapping
+        }));
+
+        setUploadedFiles(formattedFiles);
+      } else {
+        setMessage("No files found in knowledge base.");
       }
-    };
+    } catch (error) {
+      setMessage("Failed to load existing files.");
+    }
+  };
 
     initialize();
   }, [user, getToken]);
@@ -80,27 +92,24 @@ export default function FileUpload() {
       setMessage("Please select a valid file and ensure organization access");
       return;
     }
-
+  
     setLoading(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("organization_id", organizationId); // HZ: Associate file with organization
-
+    formData.append("organization_id", organizationId); //HZ: Ensure organization ID is sent
+  
     try {
       const token = await getToken();
       const response = await fetch('http://127.0.0.1:8000/api/Upload_knowledge_base', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: formData,
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData, //HZ: No need to set Content-Type manually
       });
-
+  
       const data = await response.json();
       if (response.ok) {
-        // HZ: Update UI with new file without refetching entire list
-        setUploadedFiles(prev => [...prev, data]);
+        //HZ: Ensure `prev` is always an array
+        setUploadedFiles(prev => (Array.isArray(prev) ? [...prev, data] : [data]));
         setMessage("File added to knowledge base successfully!");
         setFile(null);
       } else {
@@ -109,9 +118,11 @@ export default function FileUpload() {
     } catch (error) {
       setMessage("An error occurred during upload.");
     } finally {
-      setLoading(false); // HZ: Ensure loading state is reset
+      setLoading(false);
     }
   };
+  
+  
 
   return (
     <div className="flex justify-center items-center h-screen">
@@ -137,9 +148,9 @@ export default function FileUpload() {
           <div className="mt-4 text-left">
             <h3 className="text-sm block font-semibold">Knowledge Base Files:</h3>
             <ul className="mt-2 space-y-1">
-              {uploadedFiles.map((file) => (
+              {uploadedFiles.map((file, index) => (
                 <li 
-                  key={file.id} 
+                  key={file.id || index} 
                   className="text-sm block p-1 bg-gray-200 rounded dark:bg-gray-800"
                 >
                   {file.name}
