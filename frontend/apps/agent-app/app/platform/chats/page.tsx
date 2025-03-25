@@ -12,17 +12,17 @@ const SectionPage = () => {
 
   const handlePrimaryAction = () => {
     console.log("Create New Chat clicked");
-    setView("chat"); // Show ChatInterface when the button is clicked
+    setView("chat"); //HZ: Show ChatInterface when the button is clicked
   };
 
   const handleSecondaryAction = () => {
     console.log("History clicked");
     setView("history"); 
-    // Add logic for handling the History button click
+    //HZ: Add logic for handling the History button click
   };
 
   const handleBack = () => {
-    setView("empty"); // Go back to the main screen
+    setView("empty"); //HZ: Go back to the main screen
   };
 
   return (

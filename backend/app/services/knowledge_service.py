@@ -13,23 +13,26 @@ text_splitter = RecursiveCharacterTextSplitter(
     chunk_overlap=200
 )
 
-def process_file(file_path: str, content_type: str, organization_id: int) -> int:
-    try:
-        # Organization-specific vector store
-        vector_store = get_organization_vector_store(organization_id)
+class KnowledgeProcessor:
+    @staticmethod
+    def process_file(file_path: str, content_type: str, organization_id: int) -> int:
+        try:
+            print(f"Processing file for organization ID: {organization_id}")
+            # Organization-specific vector store
+            vector_store = get_organization_vector_store(organization_id)
 
-        # Load and process file
-        if content_type == "application/pdf":
-            loader = PyPDFLoader(file_path)
-        else:
-            loader = TextLoader(file_path)
+            # Load and process file
+            if content_type == "application/pdf":
+                loader = PyPDFLoader(file_path)
+            else:
+                loader = TextLoader(file_path)
 
-        documents = loader.load()
-        chunks = text_splitter.split_documents(documents)
+            documents = loader.load()
+            chunks = text_splitter.split_documents(documents)
 
-        # Add documents to the organization-specific vector store
-        vector_store.add_documents(chunks)
+            # Add documents to the organization-specific vector store
+            vector_store.add_documents(chunks)
 
-        return len(chunks)
-    except Exception as e:
-        raise OpenAIException(f"File processing error: {str(e)}")
+            return len(chunks)
+        except Exception as e:
+            raise OpenAIException(f"File processing error: {str(e)}")

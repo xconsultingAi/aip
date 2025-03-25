@@ -28,7 +28,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { getToken } = useAuth();
 
-  // Fetch agents from API
+  //HZ: Fetch agents from API
   useEffect(() => {
     const fetchAgents = async () => {
       try {
@@ -36,7 +36,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
         const response = await fetch('http://127.0.0.1:8000/api/agents', {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         });
@@ -44,8 +44,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
         const result = await response.json();
         console.log('Fetched Agents:', result);
 
-        if (!result.success || !Array.isArray(result.data)) {
-          throw new Error('Invalid API response');
+        if (!response.ok || !result.success || !Array.isArray(result.data)) {
+          throw new Error(result.message || 'Invalid API response');
         }
 
         setAgents(result.data);
@@ -60,59 +60,58 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
     fetchAgents();
   }, [getToken]);
 
-  // Scroll to bottom when messages update
+  //HZ: Scroll to bottom when messages update
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
-  // Send message to chat API (with query parameters)
+  //HZ: Send message to chat API
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !selectedAgent) return;
-  
-    // Add user message to chat
+
+    //HZ: Add user message to chat
     const userMessage: Message = {
       id: Math.random().toString(),
       text: inputText,
       sender: 'user',
       timestamp: new Date(),
     };
-  
+
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
     setIsAgentTyping(true);
-  
+
     try {
       const token = await getToken();
-  
-      // Construct API URL with agent_id and prompt as query params
-      const apiUrl = `http://127.0.0.1:8000/api/agents/${selectedAgent.id}/chat?prompt=${encodeURIComponent(inputText)}`;
-  
-      const response = await fetch(apiUrl, {
-        method: 'POST', // ✅ API requires GET
+      const response = await fetch(`http://127.0.0.1:8000/api/agents/${selectedAgent.id}/chat?prompt=${encodeURIComponent(inputText)}`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ prompt: inputText }),
       });
-  
-      const data = await response.json();
-      console.log('Chat API Response:', data);
-  
-      if (!response.ok || !data.success) {
+
+      const rawText = await response.text();
+      console.log('Raw API Response:', rawText);
+      const data = JSON.parse(rawText);
+      console.log(data.data);
+      
+      if (!data.data.response) {
         throw new Error(data.message || 'Chat API error');
       }
-  
-      // Add agent response to chat
+
+      //HZ: Add agent response to chat
       const agentMessage: Message = {
         id: Math.random().toString(),
-        text: data.response, // ✅ Ensure API returns `{ response: "Agent's reply" }`
+        text: data.data.response, //HZ: Ensure API returns `{ response: "Agent's reply" }`
         sender: 'agent',
         timestamp: new Date(),
       };
-  
+
       setMessages((prev) => [...prev, agentMessage]);
     } catch (error) {
       console.error('Chat API error:', error);
@@ -124,7 +123,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
       setIsAgentTyping(false);
     }
   };
-  
 
   return (
     <div className="flex flex-col h-[500px] border border-gray-300 rounded-lg overflow-hidden">
