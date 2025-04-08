@@ -36,7 +36,7 @@ export default function FileUpload() {
         setOrganizationId(orgData?.data.organization_id || null);
 
         // HZ: Load existing knowledge base files from API
-      const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge_base`, {
+      const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge/knowledge_base`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -100,7 +100,7 @@ export default function FileUpload() {
   
     try {
       const token = await getToken();
-      const response = await fetch('http://127.0.0.1:8000/api/Upload_knowledge_base', {
+      const response = await fetch('http://127.0.0.1:8000/api/knowledge/Upload_knowledge_base', {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formData, //HZ: No need to set Content-Type manually
