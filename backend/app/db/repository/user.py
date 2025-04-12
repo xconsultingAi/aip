@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.user import User
 
-# Logging Configuration
 logging.basicConfig(level=logging.INFO)
 
 # MJ: This file will contain all the database operations related to the User model
@@ -22,7 +21,7 @@ async def create_user(db: AsyncSession, user_id: str, name: str = None,
     logging.info(f"Creating user with user_id: {user_id}, name: {name}, org_id: {organization_id}")
     user = User(user_id=user_id, name=name,email=email,organization_id=organization_id 
     )
- # parameter types and add email   
+ #SH: parameter types and add email   
     db.add(user)
     try:
         await db.commit()
@@ -33,7 +32,3 @@ async def create_user(db: AsyncSession, user_id: str, name: str = None,
         logging.error(f"Error creating user {user_id}: {str(e)}")
         raise
     return user
-
-# async def get_all_users(db: AsyncSession):
-#     result = await db.execute(select(User))
-#     return result.scalars().all()

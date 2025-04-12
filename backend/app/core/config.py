@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     CLERK_JWKS_URL: str
     CLERK_ISSUER: str 
     CLERK_SECRET_KEY: str
+    CLERK_PUBLISHABLE_KEY: str
     ALLOWED_ORIGINS: str = "*"  # CORS
     DATABASE_URL: str = "DATABASE_URL"  # a default if not in .env
     PRODUCTION: bool = False
@@ -28,7 +29,14 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     KNOWLEDGE_DIR: str = "data"
     CHROMA_DIR: str = "chroma"
-    MAX_KNOWLEDGE_BASES_PER_AGENT: int = 10
+  
+    #Sh: For Websockets
+    WEBSOCKET_TIMEOUT: int = 300  # 5 minutes
+    MAX_CONNECTIONS: int = 1000
+    MESSAGE_RETRY_LIMIT: int = 3
+    WEBSOCKET_MAX_MESSAGE_SIZE: int = 1024 * 1024  # 1MB
+    WEBSOCKET_RATE_LIMIT: int = 10  # Messages per second
+    
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     EMAIL_SENDER: str = "no-reply@example.com" 
     ###### END ####
@@ -40,4 +48,4 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
-settings = Settings()
+settings = Settings()  
