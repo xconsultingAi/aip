@@ -42,7 +42,6 @@ async def get_current_user(
         )
         #TODO:MJ: This needs to be optimized. We should not be hitting the database for every request
         user = await get_user(db, user_id)
-    
         if not user:
             user = await create_user(
                 db, 
@@ -64,6 +63,7 @@ async def get_current_user(
         )
 # SH: Validate if the current user has access to the provided knowledge base IDs
 async def validate_kb_access(
+
     knowledge_ids: List[int],
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

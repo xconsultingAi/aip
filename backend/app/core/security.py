@@ -13,7 +13,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 #SH: Clerk configuration
-CLERK_JWKS_URL = settings.CLERK_JWKS_URL
+CLERK_JWKS_URL = settings.CLERK_JW
+CLERK_ISSUER = settings.CLERK_ISSUE
 #MJ: Fetch Clerk JWKS Key and Algorithm
 issuer = settings.CLERK_ISSUER
 

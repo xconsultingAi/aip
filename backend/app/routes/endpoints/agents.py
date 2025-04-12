@@ -11,6 +11,9 @@ from app.db.repository.agent import validate_knowledge_access, update_agent_know
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.models.user import UserOut as User
+from app.core.exceptions import LLMServiceError, InvalidAPIKeyError
+from typing import List
+# from app.services.llm_services import LLMService
 from sqlalchemy import select
 from typing import List
 from app.db.models.agent import Agent
@@ -207,5 +210,54 @@ async def chat_with_agent(
                 "cost": f"${response['cost']:.5f}",
             }
         )
+        
+    except LLMServiceError as e:
+        return error_response(str(e), e.status_code)
+        
+    except InvalidAPIKeyError:
+        return error_response("Invalid OpenAI configuration", status.HTTP_401_UNAUTHORIZED)
+
+@router.post("/{agent_id}/knowledge")
+async def link_knowledge(
+    agent_id: int,
+    request_data: KnowledgeLinkRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    print(f"Agent ID: {agent_id}")
+    print(f"Knowledge IDs: {request_data.knowledge_ids}")
+    print(f"Chunk Count: {request_data.chunk_count}")
+
+    # Ensure knowledge_ids is a valid list
+    if not request_data.knowledge_ids or not isinstance(request_data.knowledge_ids, list):
+        raise HTTPException(status_code=400, detail="Knowledge IDs must be a non-empty list")
+
+    try:
+        # Ensure agent exists
+        agent_exists = await db.execute(select(Agent).where(Agent.id == agent_id))
+        if not agent_exists.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent with ID {agent_id} not found"
+            )
+
+        #  Process knowledge links
+        for knowledge_id in request_data.knowledge_ids:
+            knowledge_data = KnowledgeBaseCreate(
+                filename=f"knowledge_{knowledge_id}.txt",
+                content_type="text/plain",
+                organization_id=current_user.organization_id
+            )
+
+            await create_knowledge_entry(
+                db=db,
+                knowledge_data=knowledge_data,
+                file_size=0,
+                chunk_count=request_data.chunk_count or 0,  # Ensure valid chunk count
+                agent_id=agent_id,
+                knowledge_ids=request_data.knowledge_ids or []  # Ensure valid list
+            )
+
+        return success_response("Knowledge bases linked", data={"agent_id": agent_id, "knowledge_ids": request_data.knowledge_ids})
     except HTTPException as e:
         return error_response(e.detail, e.status_code)

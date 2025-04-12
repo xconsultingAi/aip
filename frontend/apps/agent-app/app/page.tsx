@@ -11,6 +11,7 @@ const HomePage = async () => {
   const token = await getToken({ template: "FastAPI" });
 
   console.log(token)
+  console.log(user?.id)
   if (!token) {
     throw new Error("Failed to get access token");
   }

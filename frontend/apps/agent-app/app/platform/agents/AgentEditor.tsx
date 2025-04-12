@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Agent } from "../../types/agent";
-
+import { useAuth } from "@clerk/nextjs";
 const tabs = ["Model", "Knowledgebase", "Advanced", "Analysis"];
 
 interface AgentEditorProps {
@@ -12,6 +12,8 @@ interface AgentEditorProps {
 const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
   const [activeTab, setActiveTab] = useState("Model");
   const [agentData, setAgentData] = useState<Agent | null>(agent);
+  const { getToken } = useAuth();
+  
 
   //HZ: Model Tab State
   const [modelConfig, setModelConfig] = useState({
@@ -40,17 +42,19 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
     if (!agentData) return;
   
     const payload = {
-      model_name: modelConfig.model, // "gpt-4" or "gpt-3.5-turbo"
-      temperature: modelConfig.temperature, // 0.7
-      max_length: modelConfig.maxLength, // 500
-      system_prompt: modelConfig.firstMessage, // "You are a helpful assistant"
-      knowledge_base_ids: selectedKnowledgeBaseIds, // []
+      model_name: modelConfig.model,
+      temperature: modelConfig.temperature,
+      max_length: modelConfig.maxLength,
+      system_prompt: modelConfig.firstMessage,
+      knowledge_base_ids: selectedKnowledgeBaseIds,
     };
   
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/agent/${agentData?.id}/configure`, {
-        method: "POST",
+      const token = await getToken();
+      const response = await fetch(`http://127.0.0.1:8000/api/agents/${agentData?.id}/config`, {
+        method: "PUT",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
@@ -174,22 +178,61 @@ const ModelTabContent = ({ modelConfig, setModelConfig }: { modelConfig: any; se
 };
 
 //HZ: Knowledge Base Tab Component
-const KBTabContent = ({ selectedIds, setSelectedIds }: { selectedIds: number[]; setSelectedIds: React.Dispatch<React.SetStateAction<number[]>> }) => {
-  const [knowledgeBase, setKnowledgeBase] = useState<{ id: number; name: string }[]>([]);
+const KBTabContent = ({
+  selectedIds,
+  setSelectedIds,
+}: {
+  selectedIds: number[];
+  setSelectedIds: React.Dispatch<React.SetStateAction<number[]>>;
+}) => {
+  const [knowledgeBase, setKnowledgeBase] = useState<
+    { id: number; filename: string }[]
+  >([]);
+  const { getToken } = useAuth();
 
   useEffect(() => {
     const fetchKnowledgeBase = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/knowledgebase");
+        const token = await getToken();
+        if (!token) {
+          console.error("No auth token found.");
+          return;
+        }
+
+        const response = await fetch(
+          "http://127.0.0.1:8000/api/knowledge/knowledge_base",
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Error fetching knowledge base: ${response.status}`);
+        }
+
         const data = await response.json();
-        setKnowledgeBase(data);
+        console.log("Knowledge Base Data:", data);
+
+        if (Array.isArray(data)) {
+          setKnowledgeBase(data);
+        } else if (data?.data && Array.isArray(data.data)) {
+          setKnowledgeBase(data.data);
+        } else {
+          console.error("Unexpected API response format:", data);
+          setKnowledgeBase([]);
+        }
       } catch (error) {
         console.error("Error fetching knowledge base:", error);
+        setKnowledgeBase([]);
       }
     };
-    console.log("Knowledge Base Data:", knowledgeBase);
+
     fetchKnowledgeBase();
-  }, []);
+  }, [getToken]);
 
   const toggleSelection = (id: number) => {
     setSelectedIds((prev) =>
@@ -199,14 +242,29 @@ const KBTabContent = ({ selectedIds, setSelectedIds }: { selectedIds: number[]; 
 
   return (
     <div className="space-y-2">
-      {knowledgeBase.map((file) => (
-        <button key={file.id} className={`block w-full p-2 text-left rounded ${selectedIds.includes(file.id) ? "bg-green-500 text-white" : "bg-gray-200 text-gray-700"}`} onClick={() => toggleSelection(file.id)}>
-          {file.name}
-        </button>
-      ))}
+      {knowledgeBase.length === 0 ? (
+        <div className="text-gray-500 text-center">
+          No knowledge base available
+        </div>
+      ) : (
+        knowledgeBase.map((file) => (
+          <button
+            key={file.id}
+            className={`block w-full p-2 text-left rounded ${
+              selectedIds.includes(file.id)
+                ? "bg-green-500 text-white"
+                : "bg-gray-200 text-gray-700"
+            }`}
+            onClick={() => toggleSelection(file.id)}
+          >
+            {file.filename} {/* ✅ Fix: Use `filename` instead of `name` */}
+          </button>
+        ))
+      )}
     </div>
   );
 };
+
 
 const AdvancedTabContent = () => <div>Advanced settings go here...</div>;
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
