@@ -21,5 +21,5 @@ class Agent(Base):
 
     # SH: Relationships with user and organization table
     knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents")
-    owner = relationship("User", back_populates="agents", foreign_keys=[user_id])
+    owner = relationship("User", back_populates="agents")
     organization = relationship("Organization", back_populates="agents", foreign_keys=[organization_id])

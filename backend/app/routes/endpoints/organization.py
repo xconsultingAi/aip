@@ -1,38 +1,51 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
-from app.models.user import UserOut
-from app.db.repository.user import get_user
-from app.core.responses import success_response, error_response
+from app.db.repository.organization import create_organization, get_organization
+from app.models.organization import OrganizationCreate, OrganizationOut
 from app.dependencies.auth import get_current_user
 
+# SH: This is our Main Router for all the routes related to Organization
 router = APIRouter(
-    prefix="/users",
-    tags=["users"],
+    prefix="/organizations",
+    tags=["organizations"],
     dependencies=[Depends(get_current_user)]
 )
 
-@router.get("/{user_id}", response_model=UserOut)
-async def get_user_route(
-    user_id: str,
+#SH: Route to create a new organization
+@router.post("/", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
+async def create_new_organization(
+    organization: OrganizationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: UserOut = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    # Authorization check
-    if current_user.user_id != user_id:
-        return error_response(
-            "Unauthorized access",
-            http_status=status.HTTP_403_FORBIDDEN
-        )
+    #SH: Save organization in DB
+    db_organization = await create_organization(db, organization, current_user.user_id)
     
-    # Fetch user from database
-    db_user = await get_user(db, user_id)
-    if not db_user:
-        return error_response(
-            "User not found",
-            http_status=status.HTTP_404_NOT_FOUND
+    #SH: If something went wrong during creation
+    if not db_organization:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create organization."
         )
-    
-    # Return validated response
-    user_out = UserOut.model_validate(db_user)
-    return success_response("User retrieved successfully", user_out)
+
+    return db_organization
+
+#SH: Route to fetch a single organization by its id
+@router.get("/{organization_id}", response_model=OrganizationOut)
+async def read_organization(
+    organization_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    #SH: Fetch organization from DB
+    db_organization = await get_organization(db, organization_id)
+
+    #SH: If organization does not exist
+    if not db_organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found."
+        )
+
+    return db_organization

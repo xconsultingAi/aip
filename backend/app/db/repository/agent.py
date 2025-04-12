@@ -31,9 +31,8 @@ async def get_db():
             raise
 
 async def get_agents(db: AsyncSession, user_id: int):
-    """
-    Retrieve all agents for a specific user.
-    """
+    
+    #SH: Retrieve all agents for a specific user.
     try:
         result = await db.execute(select(AgentDB).where(AgentDB.user_id == user_id))
         return result.scalars().all()  
@@ -43,10 +42,9 @@ async def get_agents(db: AsyncSession, user_id: int):
             detail="RA01: An error occurred while retrieving agents"
         )
 
-async def get_agent(db: AsyncSession, agent_id: int, user_id: int):
-    """
-    Retrieve a specific agent by ID for a specific user.
-    """
+async def get_agent(db: AsyncSession, agent_id: int, user_id: str):
+    
+    #SH: Retrieve a specific agent by ID for a specific user
     try:
         result = await db.execute(select(AgentDB).where((AgentDB.id == agent_id) & (AgentDB.user_id == user_id)))
         return result.scalars().first() 
@@ -63,9 +61,8 @@ async def create_agent(
     current_user: User,
     knowledge_base_ids: List[int] = []
 ) -> AgentDB:
-    """
-    Create a new agent with default configuration.
-    """
+    
+    #SH: Create a new agent with default configuration.
     if not current_user.organization_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -80,7 +77,7 @@ async def create_agent(
             config=AgentConfigSchema().model_dump()
         )
         
-        # Link knowledge base
+        #SH: Link knowledge base
         if knowledge_base_ids:
             await validate_knowledge_access(db, knowledge_base_ids, current_user.organization_id)
             await update_agent_knowledge(db, db_agent.id, knowledge_base_ids)
@@ -104,11 +101,10 @@ async def update_agent_config(
     config: AgentConfigSchema,
     user_id: str
 ) -> AgentDB:
-    """
-    Update the configuration of an existing agent.
-    """
+    
+    #SH: Update the configuration of an existing agent.
     try:
-        #Fetch the agent
+        #SH: Fetch the agent
         result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id))
         db_agent = result.scalars().first()
         
@@ -119,7 +115,7 @@ async def update_agent_config(
                 detail=f"Agent with ID {agent_id} not found"
             )
         
-        #Verify user permission
+        #SH: Verify user permission
         if db_agent.user_id != user_id:
             logger.error(f"User {user_id} does not have permission to update agent {agent_id}")
             raise HTTPException(
@@ -127,7 +123,7 @@ async def update_agent_config(
                 detail="You do not have permission to update this agent"
             )
         
-        #Validate the config
+        #SH: Validate the config
         if not isinstance(config, AgentConfigSchema):
             logger.error("Invalid config format")
             raise HTTPException(
@@ -137,7 +133,7 @@ async def update_agent_config(
             
         db_agent.config = config.model_dump()
         
-        # Commit changes
+        #SH: Commit changes
         await db.commit()
         await db.refresh(db_agent)
         
@@ -163,7 +159,7 @@ async def update_agent_config(
         )
 
 async def validate_knowledge_access(db: AsyncSession, knowledge_ids: List[int], organization_id: int):
-    # Check all KBs belong to the same organization
+    #SH: Check all KBs belong to the same organization
     result = await db.execute(
         select(KnowledgeBase)
         .where(
@@ -184,10 +180,10 @@ async def update_agent_knowledge(
     agent_id: int,
     knowledge_ids: List[int]
 ):
-    # Clear existing associations
+    #SH: Clear existing associations
     await db.execute(delete(agent_knowledge).where(agent_knowledge.c.agent_id == agent_id))
     
-    # Add new associations
+    #SH: Add new associations
     if knowledge_ids:
         insert_stmt = insert(agent_knowledge).values([
             {"agent_id": agent_id, "knowledge_id": kb_id}
