@@ -22,6 +22,8 @@ export default function CreateAgentPage() {
       try {
         // HZ: Getting Token
         const token = await getToken();
+        console.log(user?.id);
+        
         // HZ: Getting User Data From Database
         const users = await fetch(`http://127.0.0.1:8000/api/users/${user?.id}`, {
           method: "GET",
