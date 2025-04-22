@@ -13,8 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 #SH: Clerk configuration
-CLERK_JWKS_URL = settings.CLERK_JW
-CLERK_ISSUER = settings.CLERK_ISSUE
+CLERK_JWKS_URL = settings.CLERK_JWKS_URL
 #MJ: Fetch Clerk JWKS Key and Algorithm
 issuer = settings.CLERK_ISSUER
 
@@ -213,4 +212,3 @@ def verify_websocket_token(token: str) -> dict:
             code=status.WS_1008_POLICY_VIOLATION,
             reason="Invalid token"
         )
-

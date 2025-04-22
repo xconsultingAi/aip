@@ -1,13 +1,22 @@
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, WebSocketException
+import json
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, WebSocketException, Depends, HTTPException
 from app.core.websocket_manager import websocket_manager
-from app.dependencies.auth import get_current_user_ws
+from app.dependencies.auth import get_current_user_ws, get_current_user
 from app.db.repository.agent import get_agent
-from app.services.chat_services import process_agent_response as service_process_agent_message
-from app.db.database import SessionLocal
+from app.services.chat_services import get_conversation_with_messages, process_agent_response as service_process_agent_message, start_new_conversation
+from app.services.chat_services import validate_message_sequence  # Added for sequence check
+from app.db.database import SessionLocal, get_db
+from app.core.config import settings
 from sqlalchemy.exc import SQLAlchemyError
 import datetime
 from starlette.websockets import WebSocketState
+from sqlalchemy import select, func
+from app.db.models.chat import ChatMessage, Conversation 
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.chat import ChatMessageOut, ConversationOut, ConversationWithMessages 
+from app.db.repository.chat import delete_conversation, fetch_chat_history, get_conversation_by_id, get_conversations, get_message_count, create_chat_message, update_conversation_title
+from app.db.models.user import User 
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -17,6 +26,8 @@ logger = logging.getLogger(__name__)
 async def websocket_endpoint(websocket: WebSocket, agent_id: int):
     user = None
     db = None
+    conversation_id = None  # Added conversation_id
+    is_new_conversation = False  # Initialize the flag
 
     try:
         #SH: Step 1: Authenticate User
@@ -54,10 +65,46 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: int):
 
             logger.info(f"Verified agent: {agent_id} for user: {user.user_id}")
 
+            # Add conversation handling
+            if "conversation_id" in websocket.query_params:
+                try:
+                    conversation_id = int(websocket.query_params["conversation_id"])
+                    result = await db.execute(
+                        select(Conversation)
+                        .where(
+                            (Conversation.id == conversation_id) &
+                            (Conversation.user_id == user.user_id)
+                        )
+                    )
+                    if not result.scalar():
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Invalid conversation ID or access denied."
+                        })
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                        return
+                    logger.info(f"Using existing conversation_id: {conversation_id}")
+                    is_new_conversation = False  # Existing conversation
+                except Exception as e:
+                    logger.error(f"Invalid conversation_id provided: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": "Invalid conversation_id format."
+                    })
+                    await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                    return
+            else:
+                conversation = await start_new_conversation(db, user.user_id, agent_id, "New Chat")
+                conversation_id = conversation.id
+                logger.info(f"Started new conversation: {conversation_id}")
+                is_new_conversation = True  # New conversation flag
+
             #SH: Step 3: Accept Connection and Register
             await websocket.accept()
-            await websocket_manager.connect(websocket, user.user_id, agent_id)
+            websocket.max_message_size = settings.WEBSOCKET_MAX_MESSAGE_SIZE
+            logger.info(f"Set max message size to {settings.WEBSOCKET_MAX_MESSAGE_SIZE} bytes")
 
+            await websocket_manager.connect(websocket, user.user_id, agent_id)
             #SH: Notify client that connection is established
             await websocket.send_json({
                 "type": "system",
@@ -66,55 +113,112 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: int):
             })
 
             #SH: Step 4: Main Chat Loop
+            system_status = await websocket_manager.check_system_status()
+            if system_status["status"] != "ok":
+                await websocket.send_json({
+                    "type": "system",
+                    "content": system_status["message"]
+                })
+                await websocket.close(code=status.WS_1013_TRY_AGAIN_LATER)
+                return
+
+            last_status_check = datetime.datetime.now()
+
+            # Modified message handling loop
             while True:
                 try:
-                    data = await websocket.receive_text()
-                    #SH: Check if connection is still active
-                    if websocket.client_state == WebSocketState.DISCONNECTED:
-                        logger.warning("Message received on closed connection")
-                        break
-
-                    logger.debug(f"Message from {user.user_id}: {data[:200]}...")
-
-                    #SH: Don't process empty messages
-                    if not data.strip():
-                        await websocket.send_json({
-                            "type": "error",
-                            "content": "Empty message received"
-                        })
+                    message = await websocket.receive()
+                    if "text" not in message:
                         continue
 
+                    try:
+                        data = json.loads(message["text"])
+                        logger.debug(f"Received raw data: {data}")
+                    except json.JSONDecodeError:
+                        data = {"content": message["text"], "sequence_id": None}
+                    #SH: Don't process empty messages
+                    if "content" not in data:
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Missing required field: content"
+                        })
+                        continue
                     #SH: Process the message with agent logic
+                    message_content = data['content']
+                    seq_id = data.get('sequence_id')
+
+                    if not seq_id:
+                        result = await db.execute(
+                            select(func.max(ChatMessage.sequence_id))
+                            .where(
+                                (ChatMessage.user_id == user.user_id) & 
+                                (ChatMessage.agent_id == agent_id)
+                            )
+                        )
+                        last_seq = result.scalar() or 0
+                        seq_id = last_seq + 1
+
+                    logger.info(f"Processing message seq {seq_id}: {message_content[:50]}...")
+
+                    # First message title update for new conversation
+                    if is_new_conversation:
+                        new_title = message_content[:50].strip()
+                        if not new_title:
+                            new_title = "New Chat"
+                        await update_conversation_title(db, conversation_id, new_title)
+                        is_new_conversation = False  # Only update once
+
                     response = await service_process_agent_message(
                         user_id=user.user_id,
                         agent_id=agent_id,
-                        message=data,
-                        db=db
+                        message=message_content,
+                        sequence_id=seq_id,
+                        db=db,
+                        conversation_id=conversation_id
                     )
 
-                    #SH: Send agent's reply back to the client
+                    # Save chat message with conversation_id
+                    await create_chat_message(db, {
+                        "conversation_id": conversation_id,
+                        "user_id": user.user_id,
+                        "agent_id": agent_id,
+                        "sequence_id": seq_id,
+                        "content": message_content,
+                        "sender": "user",
+                        "timestamp": datetime.datetime.now()
+                    })
+
                     await websocket.send_json({
                         "type": "message",
+                        "sequence_id": seq_id,
                         "content": response["content"],
                         "sender": "agent",
                         "timestamp": datetime.datetime.now().isoformat(),
                         "metadata": response.get("metadata", {})
                     })
 
+                    # Periodic system status check
+                    if datetime.datetime.now() - last_status_check > datetime.timedelta(minutes=5):
+                        system_status = await websocket_manager.check_system_status()
+                        last_status_check = datetime.datetime.now()
+                        if system_status["status"] != "ok":
+                            await websocket.send_json({
+                                "type": "system",
+                                "content": system_status["message"]
+                            })
+
                 except WebSocketDisconnect:
                     #SH: Client disconnected
                     logger.info(f"User {user.user_id} disconnected normally")
                     break
                 except Exception as e:
-                    #SH: Unexpected error while handling message
-                    logger.error(f"Message processing error: {str(e)}")
+                    logger.error(f"Error processing message: {str(e)}", exc_info=True)
                     await websocket.send_json({
                         "type": "error",
-                        "content": "Message processing failed",
-                        "details": str(e),
-                        "timestamp": datetime.datetime.now().isoformat()
+                        "code": "INTERNAL_ERROR",
+                        "message": "Something went wrong. Our team has been notified."
                     })
-
+                    
         #SH: Error handling for DB or other logic
         except SQLAlchemyError as e:
             logger.error(f"Database error: {str(e)}")
@@ -144,6 +248,7 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: int):
         logger.info(f"Connection closed for user {user.user_id if user else 'unknown'}")
 
 
+
 #SH: function to process a message with agent logic
 async def process_agent_message(user_id: str, agent_id: int, message: str, db) -> dict:
     # Process message through agent and return response
@@ -158,7 +263,7 @@ async def process_agent_message(user_id: str, agent_id: int, message: str, db) -
             )
 
         logger.info(f"Agent found: {agent_id}, processing message...")
-
+        
         #SH: Call actual chat logic from services
         response = await service_process_agent_message(message, agent.config, db)
         logger.info(f"Agent response generated: {response['content']}")
@@ -178,3 +283,62 @@ async def process_agent_message(user_id: str, agent_id: int, message: str, db) -
             code=status.WS_1011_INTERNAL_ERROR,
             reason=str(e)
         )
+
+@router.get("/history/{agent_id}/conversations/{conversation_id}/count")
+async def get_history_count(
+    agent_id: int,
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    count = await get_message_count(db, current_user.user_id, agent_id, conversation_id)
+    return {"count": count}
+
+@router.get("/conversations", response_model=list[ConversationOut])
+async def get_all_conversations(
+    agent_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    conversations = await get_conversations(db, current_user.user_id, agent_id)
+    return [ConversationOut.model_validate(c) for c in conversations]
+
+@router.put("/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: int,
+    new_title: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    updated = await update_conversation_title(db, conversation_id, new_title)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation updated"}
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation_endpoint(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    deleted = await delete_conversation(db, conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"message": "Conversation deleted"}
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationWithMessages)
+async def get_conversation(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    conversation = await get_conversation_by_id(
+        db=db,
+        conversation_id=conversation_id,
+        user_id=current_user.user_id
+    )
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return conversation

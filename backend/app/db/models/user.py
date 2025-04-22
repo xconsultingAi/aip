@@ -14,3 +14,5 @@ class User(Base):
     # SH: Relationships with agent and organization table
     organization = relationship("Organization", back_populates="users")
     agents = relationship("Agent", back_populates="owner")
+    chat_messages = relationship("ChatMessage", back_populates="user")
+    conversations = relationship("Conversation", back_populates="user")

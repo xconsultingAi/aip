@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Dict, Any
 
 class Settings(BaseSettings):
     #MJ: Added these in .env
@@ -36,7 +36,14 @@ class Settings(BaseSettings):
     MESSAGE_RETRY_LIMIT: int = 3
     WEBSOCKET_MAX_MESSAGE_SIZE: int = 1024 * 1024  # 1MB
     WEBSOCKET_RATE_LIMIT: int = 10  # Messages per second
-    
+    WEBSOCKET_OPTIMIZATION: Dict[str, Any] = {
+        'message_cache_size': 250,
+        'max_pending_messages': 50,
+        'priority_queues': True
+    }
+    WEBSOCKET_BATCH_SIZE: int = 10
+    MESSAGE_COMPRESSION: bool = True
+    PRIORITY_THRESHOLD: int = 5 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     EMAIL_SENDER: str = "no-reply@example.com" 
     ###### END ####

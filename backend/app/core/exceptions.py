@@ -28,7 +28,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def general_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception: {str(exc)}")
     return error_response("Internal server error", http_status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 #SH: OpenAI Exception
 def llm_service_error(detail: str) -> HTTPException:
     return HTTPException(
@@ -47,4 +46,11 @@ def openai_exception(detail: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"OpenAI API Error: {detail}",
+    )
+
+def network_exception(detail: str = "Connection to AI service failed") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"Network Error: {detail}",
+        headers={"Retry-After": "30"},
     )

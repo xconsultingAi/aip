@@ -7,6 +7,10 @@ from app.db.models.knowledge_base import agent_knowledge
 import os
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import openai  # Added for error handling
+import logging  # Added for logging
+
+logger = logging.getLogger(__name__)
 
 #SH: Text splitter to divide documents into manageable overlapping chunks
 text_splitter = RecursiveCharacterTextSplitter(
@@ -65,8 +69,21 @@ async def generate_llm_response(
         )
         return response
 
+    except openai.RateLimitError:
+        logger.warning("Rate limit exceeded")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI service rate limit exceeded"
+        )
+    except openai.APIConnectionError as e:
+        logger.error(f"Network error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to connect to AI service"
+        ) from e
     except Exception as e:
         #SH: Raise an HTTP error if any exception occurs while generating the response
+        logger.error(f"LLM processing error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate response: {str(e)}"

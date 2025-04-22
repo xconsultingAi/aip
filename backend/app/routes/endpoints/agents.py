@@ -11,7 +11,7 @@ from app.db.repository.agent import validate_knowledge_access, update_agent_know
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.models.user import UserOut as User
-from app.core.exceptions import LLMServiceError, InvalidAPIKeyError
+from app.core.exceptions import llm_service_error, invalid_api_key_error
 from typing import List
 # from app.services.llm_services import LLMService
 from sqlalchemy import select
@@ -211,10 +211,10 @@ async def chat_with_agent(
             }
         )
         
-    except LLMServiceError as e:
+    except llm_service_error as e:
         return error_response(str(e), e.status_code)
         
-    except InvalidAPIKeyError:
+    except invalid_api_key_error:
         return error_response("Invalid OpenAI configuration", status.HTTP_401_UNAUTHORIZED)
 
 @router.post("/{agent_id}/knowledge")

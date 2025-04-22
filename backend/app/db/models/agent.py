@@ -23,3 +23,5 @@ class Agent(Base):
     knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents")
     owner = relationship("User", back_populates="agents")
     organization = relationship("Organization", back_populates="agents", foreign_keys=[organization_id])
+    chat_messages = relationship("ChatMessage", back_populates="agent")
+    conversations = relationship("Conversation", back_populates="agent")
