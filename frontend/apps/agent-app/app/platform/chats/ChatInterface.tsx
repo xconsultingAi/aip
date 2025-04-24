@@ -25,29 +25,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
   const [isAgentTyping, setIsAgentTyping] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { getToken } = useAuth();
 
-  //HZ: Fetch agents from API
+  //HZ: Fetch agents
   useEffect(() => {
     const fetchAgents = async () => {
       try {
         const token = await getToken();
         const response = await fetch('http://127.0.0.1:8000/api/agents', {
-          method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         });
-
         const result = await response.json();
-        console.log('Fetched Agents:', result);
-
         if (!response.ok || !result.success || !Array.isArray(result.data)) {
           throw new Error(result.message || 'Invalid API response');
         }
-
         setAgents(result.data);
       } catch (err) {
         console.error('Error fetching agents:', err);
@@ -60,19 +56,67 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
     fetchAgents();
   }, [getToken]);
 
-  //HZ: Scroll to bottom when messages update
+  //HZ: Scroll to bottom on new messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
-  //HZ: Send message to chat API
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() || !selectedAgent) return;
+  //HZ: Setup WebSocket when agent is selected
+  useEffect(() => {
+    const connectWebSocket = async () => {
+      if (!selectedAgent) return;
 
-    //HZ: Add user message to chat
+      const token = await getToken();
+      const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/chat/${selectedAgent.id}?token=${token}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+console.log(data);
+
+        const agentMessage: Message = {
+          id: Math.random().toString(),
+          text: data.content  || data.text || 'No message',
+          sender: 'agent',
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, agentMessage]);
+        setIsAgentTyping(false);
+      };
+
+      ws.onerror = (event) => {
+        console.error('WebSocket error:', event);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+      };
+
+      setSocket(ws);
+
+      return () => {
+        ws.close();
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [selectedAgent]);
+
+  //HZ: Send user message
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim() || !socket || socket.readyState !== WebSocket.OPEN) return;
+
     const userMessage: Message = {
       id: Math.random().toString(),
       text: inputText,
@@ -81,57 +125,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInputText('');
     setIsAgentTyping(true);
-
-    try {
-      const token = await getToken();
-      const response = await fetch(`http://127.0.0.1:8000/api/agents/${selectedAgent.id}/chat?prompt=${encodeURIComponent(inputText)}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: inputText }),
-      });
-
-      const rawText = await response.text();
-      console.log('Raw API Response:', rawText);
-      const data = JSON.parse(rawText);
-      console.log(data.data);
-      
-      if (!data.data.response) {
-        throw new Error(data.message || 'Chat API error');
-      }
-
-      //HZ: Add agent response to chat
-      const agentMessage: Message = {
-        id: Math.random().toString(),
-        text: data.data.response, //HZ: Ensure API returns `{ response: "Agent's reply" }`
-        sender: 'agent',
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, agentMessage]);
-    } catch (error) {
-      console.error('Chat API error:', error);
-      setMessages((prev) => [
-        ...prev,
-        { id: Math.random().toString(), text: 'Error getting response.', sender: 'agent', timestamp: new Date() },
-      ]);
-    } finally {
-      setIsAgentTyping(false);
-    }
+    socket.send(JSON.stringify({ prompt: inputText }));
+    setInputText('');
   };
 
   return (
     <div className="flex flex-col h-[500px] border border-gray-300 rounded-lg overflow-hidden">
-      {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-300 dark:bg-gray-900 bg-gray-50">
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-white bg-gray-600 rounded-lg hover:bg-gray-700"
-        >
+        <button onClick={onBack} className="px-4 py-2 text-white bg-gray-600 rounded-lg hover:bg-gray-700">
           &larr; Back
         </button>
         <h3 className="text-lg block font-medium">
@@ -139,7 +141,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
         </h3>
       </div>
 
-      {/* Agent Selection */}
       {!selectedAgent ? (
         <div className="p-4 space-y-3 bg-gray-50 dark:bg-gray-900">
           {loading ? (
@@ -163,13 +164,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
         </div>
       ) : (
         <>
-          {/* Chat Messages */}
           <div className="flex-1 p-4 overflow-y-auto bg-gray-50 dark:bg-gray-900">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`mb-4 ${message.sender === 'user' ? 'text-right' : 'text-left'}`}
-              >
+              <div key={message.id} className={`mb-4 ${message.sender === 'user' ? 'text-right' : 'text-left'}`}>
                 <div
                   className={`inline-block p-3 rounded-lg max-w-[70%] ${
                     message.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'
@@ -192,7 +189,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ onBack }) => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message Input Form */}
           <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-300 dark:bg-gray-900">
             <div className="flex">
               <input
