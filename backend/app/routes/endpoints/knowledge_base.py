@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.core.config import settings
@@ -6,9 +6,9 @@ from app.db.database import get_db
 from app.db.models import User
 from app.db.models.knowledge_base import KnowledgeBase 
 from app.services.knowledge_service import process_file
-from app.db.repository.knowledge_base import create_knowledge_entry
+from app.db.repository.knowledge_base import create_knowledge_entry, get_organization_knowledge_count
 from app.dependencies.auth import get_current_user
-from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate
+from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate, OrganizationKnowledgeCount
 from app.core.responses import success_response, error_response
 import os
 import uuid
@@ -102,12 +102,48 @@ async def upload_knowledge(
             os.remove(file_path)
         return error_response(str(e), 500)
 
-# Route for get all KBs from database    
-@router.get("/knowledge_base", response_model=list[KnowledgeBaseOut])
-async def get_all_knowledge_bases(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(KnowledgeBase))
+@router.get("/org_knowledge_base", response_model=list[KnowledgeBaseOut])
+async def get_organization_knowledge_bases(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure user belongs to an organization
+    if not current_user.organization_id:
+        return error_response("User must belong to an organization to access knowledge bases", 400)
+    
+    # SH: Fetch knowledge bases for the user's organization
+    result = await db.execute(
+        select(KnowledgeBase)
+        .where(KnowledgeBase.organization_id == current_user.organization_id)
+    )
     knowledge_bases = result.scalars().all()
+    
     return success_response(
-        "Knowledge bases retrieved",
+        "Organization knowledge bases retrieved",
         [KnowledgeBaseOut.model_validate(kb.__dict__) for kb in knowledge_bases]
     )
+
+@router.get("/org_knowledge_count", response_model=OrganizationKnowledgeCount)
+async def get_organization_knowledge_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get count of knowledge bases for the current user's organization
+    """
+    # SH: Ensure user belongs to an organization
+    if not current_user.organization_id:
+        return error_response("User must belong to an organization", 400)
+    
+    try:
+        # Import the repository function explicitly to avoid naming conflicts
+        from app.db.repository.knowledge_base import get_organization_knowledge_count as repo_count
+        count = await repo_count(db, current_user.organization_id)
+        
+        return {
+            "organization_id": current_user.organization_id,
+            "total_knowledge_bases": count
+        }
+    except Exception as e:
+        logger.error(f"Error getting knowledge base count: {str(e)}")
+        return error_response("Could not retrieve knowledge base count", 500)

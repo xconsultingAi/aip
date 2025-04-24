@@ -14,17 +14,6 @@ async def create_conversation(db: AsyncSession, conversation_data: dict):
     await db.refresh(db_conv)
     return db_conv
 
-async def get_conversations(db: AsyncSession, user_id: str, agent_id: int):
-    result = await db.execute(
-        select(Conversation)
-        .where(
-            (Conversation.user_id == user_id) &
-            (Conversation.agent_id == agent_id)
-        )
-        .order_by(Conversation.updated_at.desc())
-    )
-    return result.scalars().all()
-
 async def update_conversation_title(db: AsyncSession, conversation_id: int, new_title: str):
     result = await db.execute(
         update(Conversation)
@@ -124,7 +113,7 @@ async def get_conversation_by_id(
     conversation_id: int,
     user_id: str
 ) -> Conversation | None:
-    """Get single conversation with messages"""
+    # Get single conversation with messages
     result = await db.execute(
         select(Conversation)
         .where(
@@ -145,16 +134,15 @@ async def update_conversation_title(db: AsyncSession, conversation_id: int, new_
     await db.commit()
     return result.rowcount
 
-# Add count function for pagination
-async def get_message_count(db: AsyncSession, user_id: str, agent_id: int, conversation_id: int):
+async def get_user_conversation_count(
+    db: AsyncSession, 
+    user_id: str  # Expects string user_id
+) -> int:
+    """
+    Get total count of conversations for a user
+    """
     result = await db.execute(
-        select(func.count(ChatMessage.id))
-        .where(
-            and_(
-                ChatMessage.user_id == user_id,
-                ChatMessage.agent_id == agent_id,
-                ChatMessage.conversation_id == conversation_id
-            )
-        )
-    )   
-    return result.scalar()
+        select(func.count(Conversation.id))
+        .where(Conversation.user_id == user_id)
+    )
+    return result.scalar() or 0

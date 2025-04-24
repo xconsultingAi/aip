@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
-from app.db.repository.organization import create_organization, get_organization
-from app.models.organization import OrganizationCreate, OrganizationOut
+from app.db.repository.organization import create_organization, get_organization, update_organization
+from app.models.organization import OrganizationCreate, OrganizationOut, OrganizationUpdate
 from app.dependencies.auth import get_current_user
 
 # SH: This is our Main Router for all the routes related to Organization
@@ -49,3 +49,21 @@ async def read_organization(
         )
 
     return db_organization
+
+#SH: Route to update an organization
+@router.put("/{organization_id}", response_model=OrganizationOut)
+async def update_existing_organization(
+    organization_id: int,
+    organization: OrganizationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    #SH: Update organization in DB
+    updated_organization = await update_organization(
+        db, 
+        organization_id, 
+        organization,
+        current_user.user_id
+    )
+    
+    return updated_organization

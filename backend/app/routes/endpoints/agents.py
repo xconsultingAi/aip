@@ -5,7 +5,7 @@ from app.dependencies.auth import get_current_user
 from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigSchema
 from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
 from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config
-from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_knowledge
+from app.db.repository.knowledge_base import create_knowledge_entry
 from app.services.llm_services import generate_llm_response
 from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
 from app.db.database import get_db
@@ -19,10 +19,7 @@ from typing import List
 from app.db.models.agent import Agent
 from app.db.models.knowledge_base import KnowledgeBase
 
-
-
 # MJ: This is our Main Router for all the routes related to Agents
-
 router = APIRouter(
     prefix="/agents",
     tags=["agents"],

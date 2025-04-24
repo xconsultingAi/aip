@@ -10,6 +10,10 @@ class ConversationBase(BaseModel):
 class ConversationCreate(ConversationBase):
     pass
 
+class UserConversationCount(BaseModel):
+    user_id: str
+    total_conversations: int
+
 class ConversationOut(ConversationBase):
     id: int
     title: str

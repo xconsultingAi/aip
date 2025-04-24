@@ -19,6 +19,12 @@ class KnowledgeBaseOut(KnowledgeBaseCreate):
 
     model_config = {"from_attributes": True}
 
+class OrganizationKnowledgeCount(BaseModel):
+    organization_id: int
+    total_knowledge_bases: int
+
+    model_config = {"from_attributes": True}
+
 class KnowledgeLinkRequest(BaseModel):
     knowledge_ids: List[int]
     chunk_count: int

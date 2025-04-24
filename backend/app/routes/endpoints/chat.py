@@ -4,18 +4,16 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, WebSocket
 from app.core.websocket_manager import websocket_manager
 from app.dependencies.auth import get_current_user_ws, get_current_user
 from app.db.repository.agent import get_agent
-from app.services.chat_services import get_conversation_with_messages, process_agent_response as service_process_agent_message, start_new_conversation
-from app.services.chat_services import validate_message_sequence  # Added for sequence check
+from app.services.chat_services import  process_agent_response as service_process_agent_message, start_new_conversation
 from app.db.database import SessionLocal, get_db
 from app.core.config import settings
 from sqlalchemy.exc import SQLAlchemyError
 import datetime
-from starlette.websockets import WebSocketState
 from sqlalchemy import select, func
-from app.db.models.chat import ChatMessage, Conversation 
+from app.db.models.chat import ChatMessage, Conversation
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.chat import ChatMessageOut, ConversationOut, ConversationWithMessages 
-from app.db.repository.chat import delete_conversation, fetch_chat_history, get_conversation_by_id, get_conversations, get_message_count, create_chat_message, update_conversation_title
+from app.models.chat import ConversationOut, ConversationWithMessages, UserConversationCount
+from app.db.repository.chat import delete_conversation, get_conversation_by_id, create_chat_message, update_conversation_title
 from app.db.models.user import User 
 
 router = APIRouter(tags=["chat"])
@@ -284,24 +282,38 @@ async def process_agent_message(user_id: str, agent_id: int, message: str, db) -
             reason=str(e)
         )
 
-@router.get("/history/{agent_id}/conversations/{conversation_id}/count")
-async def get_history_count(
-    agent_id: int,
-    conversation_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    count = await get_message_count(db, current_user.user_id, agent_id, conversation_id)
-    return {"count": count}
-
 @router.get("/conversations", response_model=list[ConversationOut])
 async def get_all_conversations(
     agent_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    conversations = await get_conversations(db, current_user.user_id, agent_id)
+    conversations = await get_conversation(db, current_user.user_id, agent_id)
     return [ConversationOut.model_validate(c) for c in conversations]
+
+@router.get("/conversations/count", response_model=UserConversationCount)
+async def get_user_conversation_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)  # Get User object
+):
+    """
+    Get total count of conversations for the current user
+    """
+    try:
+        # Use the repository function with user_id string
+        from app.db.repository.chat import get_user_conversation_count as repo_count
+        count = await repo_count(db, current_user.user_id)
+        
+        return {
+            "user_id": current_user.user_id,
+            "total_conversations": count
+        }
+    except Exception as e:
+        logger.error(f"Error getting conversation count: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve conversation count"
+        )
 
 @router.put("/conversations/{conversation_id}")
 async def update_conversation(

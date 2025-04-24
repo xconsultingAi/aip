@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.user import User
 
+# Logging Configuration
 logging.basicConfig(level=logging.INFO)
 
 # MJ: This file will contain all the database operations related to the User model

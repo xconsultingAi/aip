@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.knowledge_base import KnowledgeBase, agent_knowledge 
 from app.models.knowledge_base import KnowledgeBaseCreate
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List, Optional
 
 # SH: This file will contain all the database operations related to the Knowledge base Models
@@ -54,22 +54,29 @@ async def create_knowledge_entry(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
         )
-
-# SH: Get the knowledge base entry linked to a specific agent
-async def get_agent_knowledge(db: AsyncSession, agent_id: int):
-    
-    # SH: Fetch the knowledge base associated with the given agent ID.
+# SH: Get the knowledge base entry linked to a specific Organization
+async def get_organization_knowledge_bases(
+    db: AsyncSession, 
+    organization_id: int
+) -> list[KnowledgeBase]:
+    """
+    Retrieve all knowledge bases belonging to a specific organization
+    """
     result = await db.execute(
         select(KnowledgeBase)
-        .join(agent_knowledge, KnowledgeBase.id == agent_knowledge.c.knowledge_id)
-        .where(agent_knowledge.c.agent_id == agent_id)
+        .where(KnowledgeBase.organization_id == organization_id)
     )
-    knowledge_base = result.scalars().first()
-    
-    # SH: If no knowledge base is found, raise a 404 error
-    if not knowledge_base:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No knowledge base found for this agent"
-        )
-    return knowledge_base
+    return result.scalars().all()
+
+async def get_organization_knowledge_count(
+    db: AsyncSession, 
+    organization_id: int
+) -> int:
+    """
+    Get count of knowledge bases belonging to a specific organization
+    """
+    result = await db.execute(
+        select(func.count(KnowledgeBase.id))
+        .where(KnowledgeBase.organization_id == organization_id)
+    )
+    return result.scalar_one()
