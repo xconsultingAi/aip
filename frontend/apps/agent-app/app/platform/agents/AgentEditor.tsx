@@ -32,7 +32,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
     setAgentData(agent);
   
     if (agent) {
-      // Set model config
+      //HZ: Set model config
       setModelConfig((prev) => ({
         ...prev,
         firstMessage: agent.description || "",
@@ -41,7 +41,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
         maxLength: agent.config?.max_length ?? 100,
       }));
   
-      // ✅ Set selected KB IDs from agent.config
+      //HZ: Set selected KB IDs from agent.config
       if (agent.config?.knowledge_base_ids && Array.isArray(agent.config.knowledge_base_ids)) {
         setSelectedKnowledgeBaseIds(agent.config.knowledge_base_ids);
       } else {
