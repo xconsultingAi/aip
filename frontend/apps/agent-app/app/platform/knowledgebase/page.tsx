@@ -34,7 +34,7 @@ export default function FileUpload() {
         setOrganizationId(orgData?.data.organization_id || null);
 
         // Fetch knowledge base files
-        const filesRes = await fetch(`http://127.0.0.1:8000/api/knowledge_base`, {
+        const filesRes = await fetch(`http://127.0.0.1:8000/api/org_knowledge_base`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` }
         });
