@@ -27,7 +27,7 @@ export default function AgentListWrapper({ agents }: AgentListWrapperProps) {
               Create Agent
             </button>
             <p className="mt-4 text-gray-500 dark:text-gray-300 text-center flex h-full items-center justify-center">
-              No agents found. Click below to create your first agent.
+              No agents found. Click above to create your first agent.
             </p>
           </div>
         ) : (
