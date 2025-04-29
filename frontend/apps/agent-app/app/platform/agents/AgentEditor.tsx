@@ -30,13 +30,27 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
   //HZ: Update states when agent changes
   useEffect(() => {
     setAgentData(agent);
+  
     if (agent) {
+      // Set model config
       setModelConfig((prev) => ({
         ...prev,
         firstMessage: agent.description || "",
+        model: agent.config?.model_name || "gpt-3.5-turbo",
+        temperature: agent.config?.temperature ?? 0.7,
+        maxLength: agent.config?.max_length ?? 100,
       }));
+  
+      // ✅ Set selected KB IDs from agent.config
+      if (agent.config?.knowledge_base_ids && Array.isArray(agent.config.knowledge_base_ids)) {
+        setSelectedKnowledgeBaseIds(agent.config.knowledge_base_ids);
+      } else {
+        setSelectedKnowledgeBaseIds([]);
+      }
     }
   }, [agent]);
+  
+  
 
   const handlePublish = async () => {
     if (!agentData) return;

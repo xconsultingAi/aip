@@ -126,7 +126,7 @@ console.log(data);
 
     setMessages((prev) => [...prev, userMessage]);
     setIsAgentTyping(true);
-    socket.send(JSON.stringify({ prompt: inputText }));
+    socket.send(JSON.stringify({ content: inputText }));
     setInputText('');
   };
 
