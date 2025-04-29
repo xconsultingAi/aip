@@ -27,6 +27,7 @@ console.log(token);
   const user_data = await res.json();
   const name = user?.firstName+" "+user?.lastName;
   // HZ: Store Organization Using Full Name Of User In Database
+
   if (user_data.data.organization_id == null) {
       const token = await getToken();
       const res = await fetch("http://127.0.0.1:8000/api/organizations", {
@@ -57,6 +58,7 @@ console.log(token);
       },
     }); 
     const knowledge_data = await knowledge_response.json()
+
     const knowledge_base = knowledge_data.total_knowledge_bases ?? 0;
     if (!token) {
       throw new Error("Failed to get access token");
@@ -86,6 +88,7 @@ if (!token) {
     <Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800">
       <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400">Total Chats</h3>
       <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{conversation_count}</p> {/* Replace with dynamic data */}
+
     </Card>
     <Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800">
       <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400">Total Knowledge Bases</h3>
