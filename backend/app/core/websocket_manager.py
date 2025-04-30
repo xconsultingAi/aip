@@ -200,3 +200,25 @@ class ConnectionManager:
             pass
 
 websocket_manager = ConnectionManager()
+
+#SH: WidgetConnectionManager for embedded widgets
+class WidgetConnectionManager:
+    def _init_(self):
+        self.active_connections = defaultdict(dict)
+        
+    async def connect(self, agent_id: int, websocket: WebSocket):
+        self.active_connections[agent_id][id(websocket)] = websocket
+
+    async def disconnect(self, agent_id: int, websocket: WebSocket):
+        if id(websocket) in self.active_connections.get(agent_id, {}):
+            del self.active_connections[agent_id][id(websocket)]
+            await websocket.close()
+
+    async def broadcast(self, agent_id: int, message: dict):
+        for connection in self.active_connections.get(agent_id, {}).values():
+            try:
+                await connection.send_json(message)
+            except:
+                await self.disconnect(agent_id, connection)
+
+widget_manager = WidgetConnectionManager()

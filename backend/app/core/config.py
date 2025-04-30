@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     PRIORITY_THRESHOLD: int = 5 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     EMAIL_SENDER: str = "no-reply@example.com" 
+
+    #SH: For Widget
+    WIDGET_MAX_MESSAGE_LENGTH: int = 100 # words
+    WIDGET_RATE_LIMIT: int = 10  # messages per minute
+    WIDGET_TIMEOUT: int = 300 # second
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"
