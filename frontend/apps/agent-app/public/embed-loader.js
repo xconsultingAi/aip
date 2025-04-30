@@ -4,7 +4,7 @@
   const color = encodeURIComponent(document.currentScript.getAttribute("data-color") || "#22c55e");
 
   const iframe = document.createElement("iframe");
-  iframe.src = `https://localhost/embed-chat?agent=${agentId}&greeting=${greeting}&color=${color}`;
+  iframe.src = `https://127.0.0.1:8000/embed-chat?agent=${agentId}&greeting=${greeting}&color=${color}`;
   iframe.style.border = "none";
   iframe.style.position = "fixed";
   iframe.style.bottom = "20px";

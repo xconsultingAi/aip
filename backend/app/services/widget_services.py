@@ -123,16 +123,20 @@ class WidgetService:
         prompt: str
     ) -> Dict[str, Any]:
         try:
-            return await self.llm_client.generate(
+            response = await self.llm_client.generate(
                 model=agent.config.get("model_name", settings.FALLBACK_MODEL),
                 prompt=prompt,
                 system_prompt=agent.config.get("system_prompt", "You are a helpful assistant"),
                 temperature=agent.config.get("temperature", 0.7),
                 max_tokens=agent.config.get("max_length", 150)
             )
+            if not response.get("content"):
+                raise ValueError("Empty LLM response")
+
+            return response
         except Exception as e:
-            logger.error(f"LLM generation failed: {str(e)}")
-            raise openai_exception("Failed to generate response")
+            logger.error(f"LLM Error: {str(e)}")
+            raise
 
     def _format_success_response(
         self,
