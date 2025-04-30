@@ -6,6 +6,7 @@ from app.models.agent import AgentCreate, AgentConfigSchema
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 from app.models.agent import AgentOut
+from sqlalchemy.orm import load_only
 from app.db.models.knowledge_base import agent_knowledge
 from app.db.models.organization import Organization
 from app.db.models.knowledge_base import KnowledgeBase  
@@ -45,9 +46,30 @@ async def get_agents(db: AsyncSession, user_id: int):
 async def get_public_agent(db: AsyncSession, agent_id: int):
     """Get agent without user verification for public access"""
     try:
-        result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id))
-        return result.scalars().first()
-    except SQLAlchemyError:
+        result = await db.execute(
+            select(AgentDB)
+            .options(load_only(
+                AgentDB.id,
+                AgentDB.name,
+                AgentDB.description,
+                AgentDB.model_name,
+                AgentDB.system_prompt,
+                AgentDB.config,
+            ))
+            .where(AgentDB.id == agent_id)
+        )
+        agent = result.scalars().first()
+
+        if agent is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found"
+            )
+
+        return agent
+
+    except SQLAlchemyError as e:
+        # Log this if needed
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"RA02: An error occurred while retrieving public agent {agent_id}"

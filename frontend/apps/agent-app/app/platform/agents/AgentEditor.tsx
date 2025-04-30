@@ -283,6 +283,7 @@ const KBTabContent = ({
 
 
 
+
 const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
   const [color, setColor] = useState("#22c55e");
   const [greeting, setGreeting] = useState("Hello! How can I help?");
@@ -305,19 +306,17 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
       const token = await getToken();
       const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent?.id}`);
       setSocket(ws);
+console.log(ws);
 
       ws.onopen = () => {
         console.log("WebSocket connected");
-        // Optionally request greeting if not auto-sent
-        ws.send(JSON.stringify({ type: "get_greeting", agentId: agent.id }));
       };
 
       ws.onmessage = (event) => {
         const iframe = document.querySelector("iframe");
-        console.log("Received WS message:", event.data);
-
         try {
           const data = JSON.parse(event.data);
+console.log(data.content);
 
           if (data.type === "error") {
             console.error("WebSocket error:", data.content);
@@ -325,7 +324,7 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
           } else if (data.type === "greeting") {
             if (data.content) setGreeting(data.content);
             if (data.color) setColor(data.color);
-          } else {
+          } else if (data.type === "response") {
             setMessages((prev) => [...prev, data.content]);
             iframe?.contentWindow?.postMessage({ response: data.content }, "*");
           }
@@ -354,14 +353,17 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
   };
 
   const sendMessage = (message: string) => {
-    if (socket && agent?.id) {
-      socket.send(
-        JSON.stringify({
-          agentId: agent.id,
-          message,
-        })
-      );
-      setMessages((prev) => [...prev, `You: ${message}`]);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const trimmed = message.trim();
+      if (trimmed) {
+        // ✅ Send correct message format expected by backend
+        socket.send(JSON.stringify({
+          content: trimmed,
+        }));
+        setMessages((prev) => [...prev, `You: ${trimmed}`]);
+      } else {
+        console.error("Cannot send empty message");
+      }
     }
   };
 
@@ -533,5 +535,5 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
     </div>
   );
 };
- 
+
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
