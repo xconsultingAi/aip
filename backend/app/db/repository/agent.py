@@ -42,6 +42,17 @@ async def get_agents(db: AsyncSession, user_id: int):
             detail="RA01: An error occurred while retrieving agents"
         )
 
+async def get_public_agent(db: AsyncSession, agent_id: int):
+    """Get agent without user verification for public access"""
+    try:
+        result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id))
+        return result.scalars().first()
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"RA02: An error occurred while retrieving public agent {agent_id}"
+        )
+
 async def get_agent(db: AsyncSession, agent_id: int, user_id: str):
     
     #SH: Retrieve a specific agent by ID for a specific user
