@@ -296,51 +296,61 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
   useEffect(() => {
     if (!agent?.id) return;
 
-    const handleIframeMessage = (event: MessageEvent) => {
-      if (event.data?.message && typeof event.data.message === "string") {
-        sendMessage(event.data.message);
-      }
-    };
-
+    // HZ: Setup WebSocket for public communication
     const setupSocket = async () => {
-      const token = await getToken();
+
+      // HZ: Create WebSocket connection to FastAPI endpoint
       const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent?.id}`);
       setSocket(ws);
-console.log(ws);
 
       ws.onopen = () => {
-        console.log("WebSocket connected");
+        console.log("WebSocket connected"); // HZ: Confirm WebSocket is open
       };
 
       ws.onmessage = (event) => {
         const iframe = document.querySelector("iframe");
         try {
-          const data = JSON.parse(event.data);
-console.log(data.content);
-
+          const data = JSON.parse(event.data); // HZ: Parse server response
+          
           if (data.type === "error") {
-            console.error("WebSocket error:", data.content);
-            iframe?.contentWindow?.postMessage({ error: data.content }, "*");
+            console.error("WebSocket error:", data.content); // HZ: Log error from server
+            iframe?.contentWindow?.postMessage({ error: data.content }, "*"); // HZ: Notify iframe of error
           } else if (data.type === "greeting") {
+            // HZ: Set greeting and theme color from backend
             if (data.content) setGreeting(data.content);
             if (data.color) setColor(data.color);
           } else if (data.type === "response") {
+            // HZ: Add message and notify iframe
             setMessages((prev) => [...prev, data.content]);
             iframe?.contentWindow?.postMessage({ response: data.content }, "*");
           }
         } catch (err) {
-          console.error("Invalid JSON from server:", event.data);
+          console.error("Invalid JSON from server:", event.data); // HZ: Catch malformed server response
         }
       };
 
       ws.onclose = () => {
-        console.log("WebSocket closed");
+        console.log("WebSocket closed"); // HZ: Inform socket closed
       };
 
-      window.addEventListener("message", handleIframeMessage);
+      // HZ: Listen to postMessages from iframe
+      const handleIframeMessage = (event: MessageEvent) => {
+        if (event.data?.message && typeof event.data.message === "string") {
+          const trimmed = event.data.message.trim();
+          if (ws.readyState === WebSocket.OPEN) {
+            // HZ: Send user message from iframe to backend
+            ws.send(JSON.stringify({ content: trimmed }));
+            setMessages((prev) => [...prev, `You: ${trimmed}`]);
+          } else {
+            console.warn("Socket not open, message skipped:", trimmed);
+          }
+        }
+      };
+
+      window.addEventListener("message", handleIframeMessage); // HZ: Bind iframe-to-parent message listener
 
       return () => {
-        ws.close();
+        ws.close(); // HZ: Cleanup on component unmount
         window.removeEventListener("message", handleIframeMessage);
       };
     };
@@ -348,29 +358,30 @@ console.log(data.content);
     setupSocket();
   }, [agent?.id]);
 
+  // HZ: Toggles widget iframe visibility
   const toggleWidget = () => {
     setShowWidget((prev) => !prev);
   };
 
+  // HZ: Manually send message from parent (not iframe)
   const sendMessage = (message: string) => {
     if (socket && socket.readyState === WebSocket.OPEN) {
       const trimmed = message.trim();
       if (trimmed) {
-        // ✅ Send correct message format expected by backend
-        socket.send(JSON.stringify({
-          content: trimmed,
-        }));
+        socket.send(JSON.stringify({ content: trimmed })); // HZ: Send message to backend
         setMessages((prev) => [...prev, `You: ${trimmed}`]);
       } else {
-        console.error("Cannot send empty message");
+        console.error("Cannot send empty message"); // HZ: Prevent empty sends
       }
     }
   };
 
+  // HZ: Inline iframe content for live preview
   const widgetHtml = `
     <html>
       <head>
         <style>
+          /* HZ: Widget styles */
           .chat-widget {
             background-color: ${color};
             width: 300px;
@@ -433,6 +444,7 @@ console.log(data.content);
           </div>
         </div>
         <script>
+          // HZ: Send message from iframe to parent
           function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value;
@@ -443,6 +455,7 @@ console.log(data.content);
             }
           }
 
+          // HZ: Add messages to chat body
           function appendMessage(msg, isError = false) {
             const messagesDiv = document.getElementById('messages');
             const p = document.createElement('p');
@@ -452,7 +465,9 @@ console.log(data.content);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           }
 
+          // HZ: Receive messages from parent
           window.addEventListener("message", function(event) {
+            console.log(event);
             if (event.data?.response) {
               appendMessage(event.data.response);
             }
@@ -465,6 +480,7 @@ console.log(data.content);
     </html>
   `;
 
+  // HZ: Copy-pasteable embed snippet for external use
   const embedCode = `<script src="https://localhost:3000/embed-loader.js" data-agent="${agent?.id}" data-color="${color}" data-greeting="${greeting}" data-name="${agentName}"></script>`;
 
   return (
@@ -535,5 +551,6 @@ console.log(data.content);
     </div>
   );
 };
+
 
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
