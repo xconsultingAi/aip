@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     REQUEST_TIMEOUT: int = 30
     MAX_TOKENS_LIMIT: int = 4000
+    FALLBACK_CHUNKS: int = 3
+    MAX_TOKENS: int = 1500
+    RAG_K: int = 3
 
     #SH: for Knowledge base
     MAX_FILE_SIZE: int = 10_485_760
@@ -51,6 +54,12 @@ class Settings(BaseSettings):
     WIDGET_MAX_MESSAGE_LENGTH: int = 100 # words
     WIDGET_RATE_LIMIT: int = 10  # messages per minute
     WIDGET_TIMEOUT: int = 300 # second
+    
+    WIDGET_SESSION_TIMEOUT: int = 1800  # 30 minutes
+    WIDGET_MAX_SESSIONS_PER_AGENT: int = 100
+    WIDGET_DEFAULT_MODEL: str = "gpt-3.5-turbo"
+    WIDGET_MAX_CONTEXT_TOKENS: int = 2000
+    WIDGET_ANONYMOUS_PREFIX: str = "visitor-"
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"

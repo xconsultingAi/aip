@@ -146,3 +146,19 @@ async def get_user_conversation_count(
         .where(Conversation.user_id == user_id)
     )
     return result.scalar() or 0
+
+async def get_conversation(
+    db: AsyncSession,
+    user_id: str,
+    agent_id: int
+) -> list[Conversation]:
+    """Get all conversations for a user-agent pair"""
+    result = await db.execute(
+        select(Conversation)
+        .where(
+            (Conversation.user_id == user_id) &
+            (Conversation.agent_id == agent_id)
+        )
+        .order_by(Conversation.updated_at.desc())
+    )
+    return result.scalars().all()

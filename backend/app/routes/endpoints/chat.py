@@ -13,7 +13,7 @@ from sqlalchemy import select, func
 from app.db.models.chat import ChatMessage, Conversation
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import ConversationOut, ConversationWithMessages, UserConversationCount
-from app.db.repository.chat import delete_conversation, get_conversation_by_id, create_chat_message, update_conversation_title
+from app.db.repository.chat import delete_conversation,get_conversation, get_conversation_by_id, create_chat_message, update_conversation_title
 from app.db.models.user import User 
 
 router = APIRouter(tags=["chat"])
@@ -339,7 +339,7 @@ async def delete_conversation_endpoint(
     return {"message": "Conversation deleted"}
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationWithMessages)
-async def get_conversation(
+async def get_single_conversation(
     conversation_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)

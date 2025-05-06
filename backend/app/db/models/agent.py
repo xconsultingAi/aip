@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Text, JSON
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Text, JSON, Boolean
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 from app.db.models.knowledge_base import agent_knowledge
@@ -11,6 +11,7 @@ class Agent(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True) 
     user_id = Column(String, ForeignKey("users.user_id"), nullable=False)
+    is_public = Column(Boolean, default=False, nullable=False)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False) 
     # SH: Column for LLM Configuration
     model_name = Column(String(50), default="gpt-4")

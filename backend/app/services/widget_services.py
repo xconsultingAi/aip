@@ -1,17 +1,20 @@
-import datetime
-import logging
 import os
+import logging
+import datetime
 from typing import Dict, Any, Optional, List
-from sqlalchemy import select
+from fastapi import HTTPException, status, WebSocketException
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
+from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.llm import OpenAIClient
-from app.core.exceptions import openai_exception
 from app.core.config import settings
-from app.db.models.agent import Agent
-from app.db.models.knowledge_base import KnowledgeBase
 from app.core.vector_store import get_organization_vector_store
+from app.db.models.agent import Agent
+from app.db.models.chat import ChatMessage, Conversation
+from app.db.models.knowledge_base import KnowledgeBase
+from app.db.repository.chat import create_chat_message, create_conversation
+from app.db.repository.agent import get_agent, get_public_agent
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
@@ -22,143 +25,228 @@ text_splitter = RecursiveCharacterTextSplitter(
     chunk_overlap=200
 )
 
+async def verify_agent_access(db: AsyncSession, agent_id: int, user_id: Optional[str]):
+    if user_id:
+        result = await db.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id)
+        )
+    else:
+        result = await db.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.is_public == True)
+        )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        logger.error(f"Access denied or agent not found: {agent_id}")
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Agent not found or access denied"
+        )
+    return agent
+
+async def validate_message_sequence(
+    db: AsyncSession,
+    user_id: Optional[str],
+    agent_id: int,
+    received_seq: int,
+    conversation_id: int
+):
+    result = await db.execute(
+        select(func.max(ChatMessage.sequence_id))
+        .where(
+            (ChatMessage.user_id == user_id) &
+            (ChatMessage.agent_id == agent_id) &
+            (ChatMessage.conversation_id == conversation_id)
+        )
+    )
+    last_seq = result.scalar() or 0
+    if received_seq <= last_seq:
+        logger.warning(f"Invalid sequence {received_seq}, last was {last_seq}")
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=f"Invalid message sequence. Expected > {last_seq}, got {received_seq}."
+        )
+    return last_seq
+
+async def get_knowledge_sources(knowledge_bases: List[KnowledgeBase]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "filename": kb.filename,
+            "uploaded_at": kb.uploaded_at.isoformat(),
+            "chunk_count": kb.chunk_count
+        }
+        for kb in knowledge_bases
+    ]
+
 class WidgetService:
     def __init__(self):
         self.llm_client = OpenAIClient()
 
+    async def verify_public_agent(self, db: AsyncSession, agent_id: int):
+        """Verify agent exists and is marked as public"""
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == agent_id, Agent.is_public == True)
+        )
+        return result.scalar_one_or_none()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
     async def process_widget_message(
         self,
         agent_id: int,
         message: str,
         db: AsyncSession,
         metadata: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        sequence_id: Optional[int] = None,
+        conversation_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        try:
-            # 1. Get Agent Configuration with knowledge bases
-            agent = await self._get_agent_with_knowledge(agent_id, db)
-            if not agent:
-                return self._error_response("Agent not available", "agent_not_found")
-
-            # 2. Validate input
-            validation_error = self._validate_input(message)
-            if validation_error:
-                return validation_error
-
-            # 3. Prepare context with RAG if knowledge bases exist
-            context = await self._prepare_context(agent, message)
-            full_prompt = f"{context}\n\nVisitor: {message}"
-
-            # 4. Generate response
-            response = await self._generate_response(agent, full_prompt)
-
-            # 5. Format and return successful response
-            return self._format_success_response(agent_id, response)
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error processing widget message: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to process message"
-            )
-
-    async def _get_agent_with_knowledge(
-        self, 
-        agent_id: int, 
-        db: AsyncSession
-    ) -> Optional[Agent]:
-        """Retrieve agent with loaded knowledge bases"""
-        try:
-            result = await db.execute(
-                select(Agent)
-                .where(Agent.id == agent_id)
-                .options(selectinload(Agent.knowledge_bases))
-            )
-            return result.scalar_one_or_none()
-        except Exception as e:
-            logger.error(f"Error fetching agent: {str(e)}")
-            return None
-
-    def _validate_input(self, message: str) -> Optional[Dict[str, Any]]:
-        """Validate the incoming message"""
-        if not message or len(message.strip()) == 0:
-            return self._error_response("Message cannot be empty", "validation_error")
-
+        if not message.strip():
+            return {"type": "error", "error_type": "validation_error", "content": "Message cannot be empty"}
         if len(message) > settings.WIDGET_MAX_MESSAGE_LENGTH:
-            return self._error_response(
-                f"Message exceeds {settings.WIDGET_MAX_MESSAGE_LENGTH} characters",
-                "validation_error"
-            )
-        return None
+            return {"type": "error", "error_type": "validation_error", "content": f"Message exceeds {settings.WIDGET_MAX_MESSAGE_LENGTH} characters"}
 
-    async def _prepare_context(self, agent: Agent, message: str) -> str:
-        if not agent.knowledge_bases:
-            return ""
+        agent = await verify_agent_access(db, agent_id, user_id)
+
+        if sequence_id and conversation_id:
+            await validate_message_sequence(db, user_id, agent_id, sequence_id, conversation_id)
+
         try:
             vector_store = get_organization_vector_store(agent.organization_id)
-            docs = await vector_store.asimilarity_search(message, k=3)
-            return "\n".join([doc.page_content for doc in docs])
+            docs = await vector_store.asimilarity_search(message, k=settings.RAG_K)
+            context = "\n".join([doc.page_content for doc in docs])
         except Exception as e:
-            logger.warning(f"Failed to prepare RAG context: {str(e)}")
-            return await self._fallback_context(agent.knowledge_bases)
+            logger.warning(f"RAG context failed: {e}")
+            context = await self._fallback_context(agent.knowledge_bases)
 
-    async def _fallback_context(self, knowledge_bases: List[KnowledgeBase]) -> str:
-        context = []
-        for kb in knowledge_bases:
-            try:
-                file_path = os.path.join(settings.KNOWLEDGE_DIR, kb.filename)
-                loader = PyPDFLoader(file_path) if kb.content_type == "application/pdf" else TextLoader(file_path)
-                documents = loader.load()
-                chunks = text_splitter.split_documents(documents)
-                context.extend([chunk.page_content for chunk in chunks[:3]])
-            except Exception as e:
-                logger.warning(f"Failed to load knowledge base {kb.id}: {str(e)}")
-        return "\n\n".join(context)
+        full_prompt = f"Context:\n{context}\n\nVisitor: {message}"
 
-    async def _generate_response(
-        self, 
-        agent: Agent, 
-        prompt: str
-    ) -> Dict[str, Any]:
+        if conversation_id:
+            await create_chat_message(db, {
+                "conversation_id": conversation_id,
+                "content": message,
+                "sender": "user",
+                "user_id": user_id,
+                "agent_id": agent_id,
+                "sequence_id": sequence_id
+            })
+        else:
+            conversation = await create_conversation(db, {
+                "title": message[:50].strip() or "New Chat",
+                "user_id": user_id,
+                "agent_id": agent_id
+            })
+            conversation_id = conversation.id
+            sequence_id = 1
+            await create_chat_message(db, {
+                "conversation_id": conversation_id,
+                "content": message,
+                "sender": "user",
+                "user_id": user_id,
+                "agent_id": agent_id,
+                "sequence_id": sequence_id
+            })
+
         try:
-            response = await self.llm_client.generate(
+            llm_response = await self.llm_client.generate(
                 model=agent.config.get("model_name", settings.FALLBACK_MODEL),
-                prompt=prompt,
+                prompt=full_prompt,
                 system_prompt=agent.config.get("system_prompt", "You are a helpful assistant"),
                 temperature=agent.config.get("temperature", 0.7),
-                max_tokens=agent.config.get("max_length", 150)
+                max_tokens=agent.config.get("max_length", settings.MAX_TOKENS)
             )
-            if not response.get("content"):
-                raise ValueError("Empty LLM response")
-
-            return response
         except Exception as e:
-            logger.error(f"LLM Error: {str(e)}")
-            raise
+            logger.error(f"LLM generation error: {e}")
+            return {"type": "error", "error_type": "generation_error", "content": "Failed to generate response"}
 
-    def _format_success_response(
-        self,
-        agent_id: int,
-        llm_response: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        await create_chat_message(db, {
+            "conversation_id": conversation_id,
+            "content": llm_response.get("content", ""),
+            "sender": "agent",
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "sequence_id": sequence_id + 1
+        })
+
         return {
             "type": "response",
-            "content": llm_response["content"],
+            "content": llm_response.get("content", ""),
             "agent_id": agent_id,
             "metadata": {
                 "model": llm_response.get("model"),
                 "tokens_used": llm_response.get("usage", {}).get("total_tokens", 0),
                 "cost": llm_response.get("cost", 0),
-                "timestamp": datetime.datetime.now().isoformat()
+                "timestamp": datetime.datetime.now().isoformat(),
+                "sources": await get_knowledge_sources(agent.knowledge_bases)
             }
         }
 
-    def _error_response(self, message: str, error_type: str) -> Dict[str, Any]:
-        return {
-            "type": "error",
-            "error_type": error_type,
-            "content": message,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
+    async def _fallback_context(self, knowledge_bases: List[KnowledgeBase]) -> str:
+        texts = []
+        for kb in knowledge_bases:
+            try:
+                file_path = os.path.join(settings.KNOWLEDGE_DIR, kb.filename)
+                loader = PyPDFLoader(file_path) if kb.content_type == "application/pdf" else TextLoader(file_path)
+                docs = loader.load()
+                chunks = text_splitter.split_documents(docs)
+                texts.extend([chunk.page_content for chunk in chunks[:settings.FALLBACK_CHUNKS]])
+            except Exception as e:
+                logger.warning(f"Loading KB failed {kb.id}: {e}")
+        return "\n\n".join(texts)
+
+    @retry(stop=stop_after_attempt(3))
+    async def process_public_widget_message(
+        self,
+        db: AsyncSession,
+        visitor_id: str,
+        agent_id: int,
+        message: str
+    ) -> Dict[str, Any]:
+        try:
+            if len(message) > settings.WIDGET_MAX_MESSAGE_LENGTH:
+                return {
+                    "content": f"Message exceeds maximum length of {settings.WIDGET_MAX_MESSAGE_LENGTH} characters",
+                    "error": "message_too_long"
+                }
+
+            agent = await self.verify_public_agent(db, agent_id)
+            if not agent:
+                return {
+                    "content": "Agent not found or not publicly accessible",
+                    "error": "agent_not_found"
+                }
+
+            try:
+                vector_store = get_organization_vector_store(agent.organization_id)
+                docs = await vector_store.asimilarity_search(message, k=3)
+                context = "\n".join([doc.page_content for doc in docs])
+            except Exception as e:
+                logger.warning(f"RAG context failed: {str(e)}")
+                context = await self._fallback_context(agent.knowledge_bases)
+
+            response = await self.llm_client.generate(
+                model=agent.config.get("model_name", settings.WIDGET_DEFAULT_MODEL),
+                prompt=f"Context: {context}\n\nQuestion: {message}",
+                system_prompt=agent.config.get("system_prompt", "You are a helpful assistant"),
+                temperature=agent.config.get("temperature", 0.7),
+                max_tokens=agent.config.get("max_length", 500)
+            )
+
+            return {
+                "content": response["content"],
+                "metadata": {
+                    "model": response.get("model"),
+                    "tokens_used": response.get("usage", {}).get("total_tokens", 0),
+                    "sources": [doc.metadata.get("source", "") for doc in docs]
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing public widget message: {str(e)}")
+            return {
+                "content": "Sorry, I encountered an error processing your message",
+                "error": str(e)
+            }

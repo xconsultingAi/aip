@@ -21,11 +21,10 @@ class OpenAIClient:
     @retry(
         stop=stop_after_attempt(settings.MAX_RETRIES),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((openai.APIError, openai.APITimeoutError, openai.APIConnectionError)),
+        retry=retry_if_exception_type((openai.APIError, openai.APITimeoutError, openai.APIConnectionError, openai.RateLimitError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def generate(self, model: str, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> dict:
-
         #SH: This function sends a prompt to OpenAI and returns the generated response.It also logs token usage and handles common API errors.
         try:
             #SH: Send the prompt and system message to OpenAI's chat completion endpoint
