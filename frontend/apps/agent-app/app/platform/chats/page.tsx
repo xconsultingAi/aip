@@ -1,53 +1,24 @@
-"use client";
-import { useState } from "react";
-import { useParams } from "next/navigation";
-import EmptyState from "../../../components/custom/empty-state";
-import { UserGroupIcon } from "@heroicons/react/24/solid";
-import ChatInterface from "./ChatInterface";
-import ChatHistory from "./ChatHistory";
+import { auth } from "@clerk/nextjs/server";
+import { fetchData } from "../../utils/server/api";
+import ChatListWrapper from "./ChatListWrapper";
 
-const SectionPage = () => {
-  const { section } = useParams();
-  const [view, setView] = useState<"empty" | "chat" | "history">("empty");
+// MJ: Fetch agents on the server
+export default async function ChatPage() {
+  let agents = [];
 
-  const handlePrimaryAction = () => {
-    console.log("Create New Chat clicked");
-    setView("chat"); //HZ: Show ChatInterface when the button is clicked
-  };
+  try {
+    agents = await fetchData({
+      url: "http://127.0.0.1:8000/api/agents/",
+    });
+  } catch (error: any) {
 
-  const handleSecondaryAction = () => {
-    console.log("History clicked");
-    setView("history"); 
-    //HZ: Add logic for handling the History button click
-  };
+    //HZ: Check if the error is a 404, meaning no agents exist yet
+    if (error.message.includes("404")) {
+      agents = []; //HZ: Treat 404 as "no agents exist"
+    } else {
+      return <div className="text-red-500">Error loading agents. Please try again.</div>;
+    }
+  }
 
-  const handleBack = () => {
-    setView("empty"); //HZ: Go back to the main screen
-  };
-
-  return (
-    <div className="p-6 h-full">
-      {view === "chat" ? (
-        <ChatInterface onBack={handleBack} />
-      ) : view === "history" ? (
-        <ChatHistory onBack={handleBack} />
-      ) : (
-        <EmptyState
-          icon={<UserGroupIcon className="w-12 h-12 text-gray-300" />}
-          title={<span className="text-black">{section?.toString() || "Chats"}</span>}
-          description="Chats show your conversation history..."
-          primaryAction={{
-            label: "Create New Chat",
-            onClick: handlePrimaryAction,
-          }}
-          secondaryAction={{
-            label: "History",
-            onClick: handleSecondaryAction,
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-export default SectionPage;
+  return <ChatListWrapper agents={agents} />;
+}
