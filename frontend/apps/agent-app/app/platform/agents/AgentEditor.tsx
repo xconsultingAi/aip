@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Agent } from "../../types/agent";
 import { useAuth } from "@clerk/nextjs";
-import ChatWidget from "./ChatWidget";
 import dynamic from "next/dynamic";
 const tabs = ["Model", "Knowledgebase", "Advanced", "Analysis"];
 
