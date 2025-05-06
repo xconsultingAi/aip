@@ -294,67 +294,59 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
 
   useEffect(() => {
     if (!agent?.id) return;
-
-    // HZ: Setup WebSocket for public communication
-    const setupSocket = async () => {
-
-      // HZ: Create WebSocket connection to FastAPI endpoint
-      const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent?.id}`);
-      setSocket(ws);
-
-      ws.onopen = () => {
-        console.log("WebSocket connected"); // HZ: Confirm WebSocket is open
-      };
-
-      ws.onmessage = (event) => {
-        const iframe = document.querySelector("iframe");
-        try {
-          const data = JSON.parse(event.data); // HZ: Parse server response
-          
-          if (data.type === "error") {
-            console.error("WebSocket error:", data.content); // HZ: Log error from server
-            iframe?.contentWindow?.postMessage({ error: data.content }, "*"); // HZ: Notify iframe of error
-          } else if (data.type === "greeting") {
-            // HZ: Set greeting and theme color from backend
-            if (data.content) setGreeting(data.content);
-            if (data.color) setColor(data.color);
-          } else if (data.type === "response") {
-            // HZ: Add message and notify iframe
-            setMessages((prev) => [...prev, data.content]);
-            iframe?.contentWindow?.postMessage({ response: data.content }, "*");
-          }
-        } catch (err) {
-          console.error("Invalid JSON from server:", event.data); // HZ: Catch malformed server response
+  
+    // Create WebSocket instance
+    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent.id}`);
+    setSocket(ws);
+  
+    // Handle incoming messages
+    ws.onmessage = (event) => {
+      const iframe = document.querySelector("iframe");
+      try {
+        const data = JSON.parse(event.data);
+  
+        if (data.type === "error") {
+          console.error("WebSocket error:", data.content);
+          iframe?.contentWindow?.postMessage({ error: data.content }, "*");
+        } else if (data.type === "greeting") {
+          if (data.content) setGreeting(data.content);
+          if (data.color) setColor(data.color);
+        } else if (data.type === "message") {
+          setMessages((prev) => [...prev, data.content]);
+          iframe?.contentWindow?.postMessage({ response: data.content }, "*");
         }
-      };
-
-      ws.onclose = () => {
-        console.log("WebSocket closed"); // HZ: Inform socket closed
-      };
-
-      // HZ: Listen to postMessages from iframe
-      const handleIframeMessage = (event: MessageEvent) => {
-        if (event.data?.message && typeof event.data.message === "string") {
-          const trimmed = event.data.message.trim();
-          if (ws.readyState === WebSocket.OPEN) {
-            // HZ: Send user message from iframe to backend
-            ws.send(JSON.stringify({ content: trimmed }));
-            setMessages((prev) => [...prev, `You: ${trimmed}`]);
-          } else {
-            console.warn("Socket not open, message skipped:", trimmed);
-          }
-        }
-      };
-
-      window.addEventListener("message", handleIframeMessage); // HZ: Bind iframe-to-parent message listener
-
-      return () => {
-        ws.close(); // HZ: Cleanup on component unmount
-        window.removeEventListener("message", handleIframeMessage);
-      };
+      } catch (err) {
+        console.error("Invalid JSON from server:", event.data);
+      }
     };
-
-    setupSocket();
+  
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+    };
+  
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
+  
+    const handleIframeMessage = (event: MessageEvent) => {
+      if (event.data?.message && typeof event.data.message === "string") {
+        const trimmed = event.data.message.trim();
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ content: trimmed }));
+          setMessages((prev) => [...prev, `You: ${trimmed}`]);
+        } else {
+          console.warn("Socket not open, message skipped:", trimmed);
+        }
+      }
+    };
+  
+    window.addEventListener("message", handleIframeMessage);
+  
+    // Proper cleanup
+    return () => {
+      ws.close();
+      window.removeEventListener("message", handleIframeMessage);
+    };
   }, [agent?.id]);
 
   // HZ: Toggles widget iframe visibility
