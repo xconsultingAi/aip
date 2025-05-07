@@ -97,11 +97,58 @@ if (!token) {
 
   {/* Add more cards as needed */}
 </div>
+<div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800 col-span-1 md:col-span-2 lg:col-span-3">
+  <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400 mb-4">Latest Agents</h3>
+  
+  <div className="overflow-auto max-h-[300px]">
+    <table className="min-w-full table-auto text-sm text-left text-gray-700 dark:text-gray-300">
+      <thead className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 sticky top-0">
+        <tr>
+          <th className="px-4 py-2">Name</th>
+          <th className="px-4 py-2">System Prompt</th>
+          <th className="px-4 py-2">Model Name</th>
+          <th className="px-4 py-2">Temprature</th>
+          <th className="px-4 py-2">Public</th>
+        </tr>
+      </thead>
+      <tbody>
+        {agents
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5)
+          .map((agent: any) => (
+            <tr key={agent.id} className="border-b border-gray-200 dark:border-gray-600">
+              <td className="px-4 py-2">{agent.name}</td>
+              <td className="px-4 py-2">{agent.config.system_prompt}</td>
+              <td className="px-4 py-2">{agent.config.model_name}</td>
+              <td className="px-4 py-2">{agent.config.temperature}</td>
+              <td className="px-4 py-2">
+              {agent.is_public == true ? (
+                  <span className="text-green-500 font-bold">✔</span>
+                ) : (
+                  <span className="text-red-500 font-bold">✘</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        {agents.length === 0 && (
+          <tr>
+            <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
+              No agents found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</Card>
 
-      <p className="text-gray-700 dark:text-gray-400 mt-2">
+
+</div>
+      {/* <p className="text-gray-700 dark:text-gray-400 mt-2">
         This is result of Backend API Call.
         {JSON.stringify(data)}
-      </p>
+      </p> */}
     </div>
   );
 };
