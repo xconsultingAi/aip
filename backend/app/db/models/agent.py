@@ -19,6 +19,10 @@ class Agent(Base):
     max_length = Column(Integer, default=500)
     system_prompt = Column(Text, default="You are a helpful assistant")
     config = Column(JSON, nullable=False, server_default='{}')
+    #SH: Column for Widget
+    greeting_message = Column(String(200), default="Hello! How can I help?")
+    theme_color = Column(String(7), default="#22c55e")  # Hex format
+    embed_code = Column(Text, nullable=True)
 
     # SH: Relationships with user and organization table
     knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents")
@@ -26,3 +30,4 @@ class Agent(Base):
     organization = relationship("Organization", back_populates="agents", foreign_keys=[organization_id])
     chat_messages = relationship("ChatMessage", back_populates="agent")
     conversations = relationship("Conversation", back_populates="agent")
+    widget_sessions = relationship("WidgetSession", back_populates="agent", cascade="all, delete-orphan")

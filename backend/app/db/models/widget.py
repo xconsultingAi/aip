@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from app.db.database import Base
+from sqlalchemy.orm import relationship
 
 # MJ: This is the database model used for Migrations & CRUD operations
 class WidgetSession(Base):
@@ -13,3 +14,7 @@ class WidgetSession(Base):
     last_active = Column(DateTime(timezone=True), onupdate=func.now())
     message_count = Column(Integer, default=0)
     status = Column(String(20), default='active')
+    
+    # Relationship with Agent
+    agent = relationship("Agent", back_populates="widget_sessions")
+    

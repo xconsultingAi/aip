@@ -9,11 +9,23 @@ class AgentConfigSchema(BaseModel):
     max_length: int = Field(default=500, gt=0)
     system_prompt: str = Field(default="You are a helpful assistant")
     knowledge_base_ids: List[int] = Field(default=[], description="Associated knowledge base IDs")
+    
+    #SH: advanced settings for widget
+    greeting_message: Optional[str] = "Hello! How can I help?"
+    theme_color: Optional[str] = "#22c55e"
+    embed_code: Optional[str] = None
+    is_public: Optional[bool] = False
 # Base Agent Model
 class AgentBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="Agent name is compulsory")
     description: Optional[str] = Field(None, max_length=255, description="Description is optional")
     organization_id: int = Field(..., description="Organization ID is compulsory")
+    
+class AgentAdvanceSettings(BaseModel):
+    greeting_message: str = "Hello! How can I help?"
+    theme_color: str = "#22c55e"
+    embed_code: Optional[str] = None
+    is_public: bool = False
 
 # Agent Creation Model
 class AgentCreate(AgentBase):
@@ -26,6 +38,11 @@ class AgentOut(AgentBase):
     organization_id: int
     config: AgentConfigSchema
     knowledge_base_ids: List[int] = Field(default=[], description="Associated knowledge base IDs")
+    # SH: For Widget
+    greeting_message: str
+    theme_color: str
+    embed_code: Optional[str]
+    is_public: bool
 
 # Agent Response Model
 class AgentResponse(BaseModel):

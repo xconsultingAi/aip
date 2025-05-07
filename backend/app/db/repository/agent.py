@@ -2,13 +2,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.agent import Agent as AgentDB
 from app.db.models.user import User
-from app.models.agent import AgentCreate, AgentConfigSchema
+from app.models.agent import AgentCreate, AgentConfigSchema, AgentAdvanceSettings
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
-from app.models.agent import AgentOut
 from sqlalchemy.orm import load_only
 from app.db.models.knowledge_base import agent_knowledge
-from app.db.models.organization import Organization
 from app.db.models.knowledge_base import KnowledgeBase  
 from sqlalchemy.sql.expression import delete, insert
 from typing import List
@@ -225,3 +223,42 @@ async def update_agent_knowledge(
         await db.execute(insert_stmt)
     
     await db.commit()
+    
+async def update_agent_advance_settings_repo(
+    db: AsyncSession,
+    agent_id: int,
+    settings: AgentAdvanceSettings,
+    user_id: str
+) -> AgentDB:
+    try:
+        result = await db.execute(
+            select(AgentDB).where(
+                (AgentDB.id == agent_id) &
+                (AgentDB.user_id == user_id)
+            )
+        )
+        agent = result.scalars().first()
+        
+        if not agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Agent not found or access denied"
+            )
+
+        # Update fields
+        agent.greeting_message = settings.greeting_message
+        agent.theme_color = settings.theme_color
+        agent.embed_code = settings.embed_code
+        agent.is_public = settings.is_public
+
+        await db.commit()
+        await db.refresh(agent, ["knowledge_bases"])  # Load relationships
+        return agent
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Database error updating settings: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database operation failed"
+        )

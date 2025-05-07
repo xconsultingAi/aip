@@ -1,16 +1,17 @@
+import logging
 from fastapi import APIRouter, status, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.responses import success_response, error_response
 from app.dependencies.auth import get_current_user
-from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigSchema
+from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigSchema, AgentAdvanceSettings
 from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
-from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config
+from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config, update_agent_advance_settings_repo
 from app.db.repository.knowledge_base import create_knowledge_entry
 from app.services.llm_services import generate_llm_response
 from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from app.models.user import UserOut as User
+from app.db.models.user import User
 from app.core.exceptions import llm_service_error, invalid_api_key_error
 from typing import List
 # from app.services.llm_services import LLMService
@@ -25,6 +26,7 @@ router = APIRouter(
     tags=["agents"],
     dependencies=[Depends(get_current_user)] # MJ: Ensure secure routes for agents
 )
+logger = logging.getLogger(__name__)
 
 @router.get("/", response_model=list[AgentOut])
 async def read_agents(
@@ -258,3 +260,45 @@ async def link_knowledge(
         return success_response("Knowledge bases linked", data={"agent_id": agent_id, "knowledge_ids": request_data.knowledge_ids})
     except HTTPException as e:
         return error_response(e.detail, e.status_code)
+
+@router.put("/{agent_id}/advance-settings", response_model=AgentOut)
+async def update_agent_advance_settings(
+    agent_id: int,
+    settings: AgentAdvanceSettings,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)  # Now using SQLAlchemy User model
+):
+    try:
+        # Use the repository function
+        updated_agent = await update_agent_advance_settings_repo(
+            db, agent_id, settings, current_user.user_id  # Access user_id from SQLAlchemy model
+        )
+        
+        # Build response data from SQLAlchemy model
+        agent_data = {
+            "id": updated_agent.id,
+            "name": updated_agent.name,
+            "description": updated_agent.description,
+            "user_id": updated_agent.user_id,
+            "organization_id": updated_agent.organization_id,
+            "config": updated_agent.config,
+            "greeting_message": updated_agent.greeting_message,
+            "theme_color": updated_agent.theme_color,
+            "embed_code": updated_agent.embed_code,
+            "is_public": updated_agent.is_public,
+            "knowledge_base_ids": [kb.id for kb in updated_agent.knowledge_bases]
+        }
+        
+        return success_response(
+            "Advanced settings updated successfully",
+            AgentOut.model_validate(agent_data)
+        )
+    
+    except HTTPException as e:
+        return error_response(e.detail, e.status_code)
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        return error_response(
+            "Internal server error",
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -5,7 +5,8 @@ from app.core.config import settings
 #MJ: Database Handler
 
 engine = create_async_engine(settings.DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+SessionLocal = sessionmaker(bind=engine,class_=AsyncSession,expire_on_commit=False,autocommit=False,autoflush=False
+)
 
 Base = declarative_base()
 
@@ -14,6 +15,8 @@ async def get_db():
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
             await session.rollback()
-            raise
+            raise e
+        finally:
+            await session.close()

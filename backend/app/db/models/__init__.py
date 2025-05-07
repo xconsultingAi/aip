@@ -2,6 +2,7 @@ from app.db.models.user import User
 from app.db.models.agent import Agent
 from app.db.models.organization import Organization
 from app.db.models.knowledge_base import KnowledgeBase
+from app.db.models.widget import WidgetSession
 
 def __init__(self, filename, content_type, organization_id, file_size, chunk_count):
     self.filename = filename
