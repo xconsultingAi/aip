@@ -40,6 +40,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
         model: agent.config?.model_name || "gpt-3.5-turbo",
         temperature: agent.config?.temperature ?? 0.7,
         maxLength: agent.config?.max_length ?? 100,
+        
       }));
   
       //HZ: Set selected KB IDs from agent.config
@@ -281,30 +282,27 @@ const KBTabContent = ({
 };
 
 
-
-
 const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
-  const [color, setColor] = useState("#22c55e");
-  const [greeting, setGreeting] = useState("Hello! How can I help?");
+ const [color, setColor] = useState(agent?.theme_color || "#22c55e");
+  const [greeting, setGreeting] = useState(agent?.greeting_message || "Hello! How can I help?");
+  const [agentName, setAgentName] = useState(agent.config?.name || agent.name || "");
+  const [isPublic, setIsPublic] = useState(agent?.is_public ?? true);
   const [showWidget, setShowWidget] = useState(false);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
-  const [agentName, setAgentName] = useState(agent?.name || "");
+  const [socket, setSocket] = useState<WebSocket | null>(null);
   const { getToken } = useAuth();
 
   useEffect(() => {
     if (!agent?.id) return;
-  
-    // Create WebSocket instance
+
     const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent.id}`);
     setSocket(ws);
-  
-    // Handle incoming messages
+
     ws.onmessage = (event) => {
       const iframe = document.querySelector("iframe");
       try {
         const data = JSON.parse(event.data);
-  
+
         if (data.type === "error") {
           console.error("WebSocket error:", data.content);
           iframe?.contentWindow?.postMessage({ error: data.content }, "*");
@@ -319,15 +317,10 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
         console.error("Invalid JSON from server:", event.data);
       }
     };
-  
-    ws.onopen = () => {
-      console.log("WebSocket connected");
-    };
-  
-    ws.onclose = () => {
-      console.log("WebSocket closed");
-    };
-  
+
+    ws.onopen = () => console.log("WebSocket connected");
+    ws.onclose = () => console.log("WebSocket closed");
+
     const handleIframeMessage = (event: MessageEvent) => {
       if (event.data?.message && typeof event.data.message === "string") {
         const trimmed = event.data.message.trim();
@@ -339,40 +332,70 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
         }
       }
     };
-  
+
     window.addEventListener("message", handleIframeMessage);
-  
-    // Proper cleanup
+
     return () => {
       ws.close();
       window.removeEventListener("message", handleIframeMessage);
     };
   }, [agent?.id]);
 
-  // HZ: Toggles widget iframe visibility
   const toggleWidget = () => {
     setShowWidget((prev) => !prev);
   };
 
-  // HZ: Manually send message from parent (not iframe)
   const sendMessage = (message: string) => {
     if (socket && socket.readyState === WebSocket.OPEN) {
       const trimmed = message.trim();
       if (trimmed) {
-        socket.send(JSON.stringify({ content: trimmed })); // HZ: Send message to backend
+        socket.send(JSON.stringify({ content: trimmed }));
         setMessages((prev) => [...prev, `You: ${trimmed}`]);
-      } else {
-        console.error("Cannot send empty message"); // HZ: Prevent empty sends
       }
     }
   };
 
-  // HZ: Inline iframe content for live preview
+  const handleSubmit = async () => {
+    if (!agent?.id) return;
+
+    try {
+      const token = await getToken();
+      const embedCode = `<script src="https://localhost:3000/embed-loader.js" data-agent="${agent?.id}" data-color="${color}" data-greeting="${greeting}" data-name="${agentName}"></script>`;
+
+      const res = await fetch(`http://127.0.0.1:8000/api/agents/${agent.id}/advance-settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          greeting_message: greeting,
+          theme_color: color,
+          is_public: isPublic,
+          embed_code: embedCode,  // Embed code correctly passed
+        }),
+      });
+console.log(res);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Failed to update settings:", errorText);
+        alert("Error: " + errorText);
+        return;
+      }
+
+      alert("Widget settings updated successfully");
+window.location.reload();
+    } catch (err) {
+      console.error("Error submitting form:", err);
+      alert("Error saving settings.");
+    }
+  };
+
   const widgetHtml = `
     <html>
       <head>
         <style>
-          /* HZ: Widget styles */
           .chat-widget {
             background-color: ${color};
             width: 300px;
@@ -435,18 +458,15 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
           </div>
         </div>
         <script>
-          // HZ: Send message from iframe to parent
           function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value;
             if (message) {
-              window.parent.postMessage({ message: message }, "*");
+              window.parent.postMessage({ message }, "*");
               input.value = '';
               appendMessage("You: " + message);
             }
           }
-
-          // HZ: Add messages to chat body
           function appendMessage(msg, isError = false) {
             const messagesDiv = document.getElementById('messages');
             const p = document.createElement('p');
@@ -455,10 +475,7 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
             messagesDiv.appendChild(p);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           }
-
-          // HZ: Receive messages from parent
           window.addEventListener("message", function(event) {
-            console.log(event);
             if (event.data?.response) {
               appendMessage(event.data.response);
             }
@@ -471,7 +488,6 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
     </html>
   `;
 
-  // HZ: Copy-pasteable embed snippet for external use
   const embedCode = `<script src="https://localhost:3000/embed-loader.js" data-agent="${agent?.id}" data-color="${color}" data-greeting="${greeting}" data-name="${agentName}"></script>`;
 
   return (
@@ -503,6 +519,31 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
             onChange={(e) => setColor(e.target.value)}
             className="h-10 w-20 border border-gray-300 rounded"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Visibility</label>
+          <div className="flex gap-4 items-center">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                name="visibility"
+                value="public"
+                checked={isPublic}
+                onChange={() => setIsPublic(true)}
+              />
+              Public
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                name="visibility"
+                value="private"
+                checked={!isPublic}
+                onChange={() => setIsPublic(false)}
+              />
+              Private
+            </label>
+          </div>
         </div>
       </div>
 
@@ -539,9 +580,19 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
           Copy and paste this script into your website's HTML to embed the chat widget.
         </p>
       </div>
+
+      <div className="mt-4">
+        <button
+          onClick={handleSubmit}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+        >
+          Submit
+        </button>
+      </div>
     </div>
   );
 };
+
 
 
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
