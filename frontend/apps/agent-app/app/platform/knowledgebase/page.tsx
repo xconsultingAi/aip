@@ -15,21 +15,27 @@ export default function FileUpload() {
   const [loading, setLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<KnowledgeFile[]>([]);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // Ensure client-side rendering
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Initialize and fetch existing files
   useEffect(() => {
     const initialize = async () => {
       if (!user) return;
-      
+
       try {
         const token = await getToken();
-        
+
         // Fetch organization ID
         const orgRes = await fetch(`http://127.0.0.1:8000/api/users/${user.id}`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` }
         });
-        
+
         const orgData = await orgRes.json();
         setOrganizationId(orgData?.data.organization_id || null);
 
@@ -42,10 +48,12 @@ export default function FileUpload() {
         const filesData = await filesRes.json();
 
         if (filesData.success && Array.isArray(filesData.data)) {
-          setUploadedFiles(filesData.data.slice(0, 5).map(file => ({
-            id: file.id,
+          const parsedFiles = filesData.data.slice(0, 5).map(file => ({
+            id: file.id || file.filename || file.name,
             name: file.filename || file.name || "Unnamed file"
-          })));
+          }));
+          console.log("Loaded file IDs:", parsedFiles.map(f => f.id));
+          setUploadedFiles(parsedFiles);
         }
       } catch (error) {
         setMessage("Failed to load files");
@@ -57,7 +65,7 @@ export default function FileUpload() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    
+
     const selectedFile = e.target.files[0];
     const allowedTypes = ["application/pdf", "text/plain"];
     const maxSize = 5 * 1024 * 1024; // 5MB
@@ -97,19 +105,20 @@ export default function FileUpload() {
       const data = await response.json();
 
       if (response.ok) {
-        // Add the new file to the beginning of the list
+        const newFile = {
+          id: data.id || file.name,
+          name: data.filename || file.name
+        };
+
         setUploadedFiles(prev => [
-          {
-            id: data.id,
-            name: data.filename || file.name
-          },
+          newFile,
           ...prev.slice(0, 4) // Keep only 5 most recent files
         ]);
-        
+
         setMessage("Upload successful!");
         setFile(null);
-        
-        // Clear the file input
+
+        // Clear file input
         const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
         if (fileInput) fileInput.value = "";
       } else {
@@ -123,17 +132,17 @@ export default function FileUpload() {
   };
 
   return (
-    <div className="flex justify-center items-center h-screen">
-      <div className="p-6 border rounded-lg shadow-md bg-white max-w-sm w-full text-center dark:bg-gray-900">
+    <div className="flex justify-center items-center h-screen ">
+      <div className="p-6 border rounded-lg shadow-md bg-white max-w-sm w-full text-center dark:bg-gray-900 shadow-2xl">
         <h2 className="text-lg font-semibold mb-4">Upload Knowledge File</h2>
-        
+
         <input 
           type="file" 
           accept=".pdf,.txt" 
           onChange={handleFileChange} 
           className="mb-4 w-full text-sm border p-2 rounded-lg dark:bg-gray-800"
         />
-        
+
         <button 
           onClick={handleUpload} 
           disabled={loading || !file}
@@ -144,7 +153,7 @@ export default function FileUpload() {
         >
           {loading ? "Uploading..." : "Upload"}
         </button>
-        
+
         {message && (
           <p className={`mt-2 text-sm ${
             message.includes("success") ? "text-green-500" : "text-red-500"
@@ -153,13 +162,13 @@ export default function FileUpload() {
           </p>
         )}
 
-        {uploadedFiles.length > 0 && (
+        {isClient && uploadedFiles.length > 0 && (
           <div className="mt-4">
             <h3 className="font-medium mb-2">Recent Files:</h3>
             <ul className="space-y-1">
-              {uploadedFiles.map((file) => (
+              {uploadedFiles.map((file, index) => (
                 <li 
-                  key={file.id} 
+                  key={file.id || file.name || index}
                   className="p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm"
                 >
                   {file.name}

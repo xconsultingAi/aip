@@ -80,17 +80,17 @@ if (!token) {
         Welcome {user?.firstName} {user?.lastName} !
         </h2>
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800">
+    <Card className="p-6 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 border-0">
       <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400">Total Agents</h3>
       <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{agents.length}</p>
     </Card>
     
-    <Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800">
+    <Card className="p-6 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 border-0">
       <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400">Total Chats</h3>
       <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{conversation_count}</p> {/* Replace with dynamic data */}
 
     </Card>
-    <Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800">
+    <Card className="p-6 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 border-0">
       <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400">Total Knowledge Bases</h3>
       <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{knowledge_base}</p> {/* Replace with dynamic data */}
     </Card>
@@ -98,7 +98,7 @@ if (!token) {
   {/* Add more cards as needed */}
 </div>
 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-<Card className="p-6 shadow rounded-2xl bg-white dark:bg-gray-800 col-span-1 md:col-span-2 lg:col-span-3">
+<Card className="p-6 shadow-2xl rounded-2xl bg-white dark:bg-gray-800 col-span-1 md:col-span-2 lg:col-span-3 border-0">
   <h3 className="text-sm font-medium text-gray-800 dark:text-gray-400 mb-4">Latest Agents</h3>
   
   <div className="overflow-auto max-h-[300px]">
