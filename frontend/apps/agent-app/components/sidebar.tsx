@@ -57,6 +57,7 @@ const Sidebar = () => {
                                 <MenuItem label="Agents" icon={<UserGroupIcon />} path="/platform/agents" />
                                 <MenuItem label="Chats" icon={<ChatBubbleLeftIcon />} path="/platform/chats" />
                                 <MenuItem label="Knowledgebase" icon={<BookOpenIcon />} path="/platform/knowledgebase" />
+                                <MenuItem label="URL Scraping" icon={<BookOpenIcon />} path="/platform/urlscraping" />
                             </>
                         }
                         defaultOpen={true} // Optional, to make this menu open by default

@@ -89,14 +89,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
 
   if (!agentData) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-gray-500">
+      <div className="w-full h-full flex items-center justify-center text-gray-500 bg-gray-200 dark:bg-gray-800 rounded-lg">
         Select an agent to edit
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-gray-200 dark:bg-gray-800 p-4">
+    <div className="w-full h-full flex flex-col bg-gray-200 dark:bg-gray-800 p-4 ">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
           {agentData.name}
@@ -395,55 +395,96 @@ window.location.reload();
   const widgetHtml = `
     <html>
       <head>
-        <style>
-          .chat-widget {
-            background-color: ${color};
-            width: 300px;
-            height: 400px;
-            border-radius: 10px;
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-            display: flex;
-            flex-direction: column;
-            font-family: sans-serif;
-          }
-          .chat-header {
-            background-color: #333;
-            color: white;
-            padding: 10px;
-            text-align: center;
-            border-radius: 10px 10px 0 0;
-            font-size: 16px;
-          }
-          .chat-body {
-            flex-grow: 1;
-            padding: 10px;
-            overflow-y: auto;
-            font-size: 14px;
-          }
-          .chat-input {
-            display: flex;
-            border-top: 1px solid #ccc;
-            padding: 10px;
-          }
-          .chat-input input {
-            flex-grow: 1;
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-          }
-          .chat-input button {
-            margin-left: 10px;
-            padding: 8px 12px;
-            background-color: #333;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-          }
-        </style>
+<style>
+  .chat-widget {
+    background-color: ${color};
+    width: 300px;
+    height: 400px;
+    border-radius: 10px;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    font-family: sans-serif;
+  }
+
+  .chat-header {
+    background-color: #333;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    border-radius: 10px 10px 0 0;
+    font-size: 16px;
+  }
+
+  .chat-body {
+    flex-grow: 1;
+    padding: 10px;
+    overflow-y: auto;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .chat-input {
+    display: flex;
+    border-top: 1px solid #ccc;
+    padding: 10px;
+  }
+
+  .chat-input input {
+    flex-grow: 1;
+    padding: 8px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+  }
+
+  .chat-input button {
+    margin-left: 10px;
+    padding: 8px 12px;
+    background-color: #333;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+
+  /* Message wrapper styles */
+  .message {
+    display: flex;
+  }
+
+  .message.user {
+    justify-content: flex-end;
+  }
+
+  .message.agent {
+    justify-content: flex-start;
+  }
+
+  .message.user p {
+    background-color: #dcf8c6;
+    color: #000;
+    padding: 8px 12px;
+    border-radius: 16px 16px 0 16px;
+    max-width: 75%;
+    word-wrap: break-word;
+  }
+
+  .message.agent p {
+    background-color: #fff;
+    color: #000;
+    padding: 8px 12px;
+    border-radius: 16px 16px 16px 0;
+    max-width: 75%;
+    word-wrap: break-word;
+    border: 1px solid #ddd;
+  }
+</style>
+
       </head>
       <body>
         <div class="chat-widget">
@@ -477,7 +518,7 @@ window.location.reload();
           }
           window.addEventListener("message", function(event) {
             if (event.data?.response) {
-              appendMessage(event.data.response);
+              appendMessage("Agent: " + event.data.response);
             }
             if (event.data?.error) {
               appendMessage("❌ " + event.data.error, true);
@@ -550,7 +591,7 @@ window.location.reload();
       <div className="my-4">
         <button
           onClick={toggleWidget}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          className="bg-green-600 text-white px-4 py-2 rounded"
         >
           {showWidget ? "Hide Widget" : "Show Widget"}
         </button>

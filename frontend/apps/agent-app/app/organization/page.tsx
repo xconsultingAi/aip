@@ -137,7 +137,7 @@ export default function OrganizationPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md dark:bg-gray-900">
+      <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md dark:bg-gray-900 shadow-2xl">
         <h1 className="text-2xl font-bold text-center mb-4">Organization Details</h1>
 
         {loading ? (

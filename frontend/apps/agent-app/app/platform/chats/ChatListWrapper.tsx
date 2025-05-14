@@ -16,7 +16,7 @@ export default function ChatListWrapper({ agents }: ChatListWrapperProps) {
   const router = useRouter();
 
   return (
-    <div className="flex h-full bg-gray-200 dark:bg-gray-800">
+    <div className="flex h-full bg-gray-200 dark:bg-gray-800 shadow-2xl">
       <div className="w-1/4 bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-400 rounded-lg">
         {agents.length === 0 ? (
           <div className="p-4">
