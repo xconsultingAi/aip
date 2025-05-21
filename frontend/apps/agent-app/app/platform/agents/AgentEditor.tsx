@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { Agent } from "../../types/agent";
 import { useAuth } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
-const tabs = ["Model", "Knowledgebase", "Advanced", "Analysis"];
+import { useRouter } from "next/navigation";
+
+const tabs = ["Model", "Knowledgebase", "Widget", "Analysis"];
 
 interface AgentEditorProps {
   agent: Agent | null;
@@ -14,6 +16,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
   const [activeTab, setActiveTab] = useState("Model");
   const [agentData, setAgentData] = useState<Agent | null>(agent);
   const { getToken } = useAuth();
+  
   
 
   //HZ: Model Tab State
@@ -63,6 +66,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
       max_length: modelConfig.maxLength,
       system_prompt: modelConfig.firstMessage,
       knowledge_base_ids: selectedKnowledgeBaseIds,
+
     };
   
     try {
@@ -102,7 +106,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
           {agentData.name}
         </h2>
         <button onClick={handlePublish} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
-          Publish
+          Save Changes
         </button>
       </div>
 
@@ -123,7 +127,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
       <div className="flex-1 overflow-y-auto p-4 bg-gray-200 dark:bg-gray-800">
         {activeTab === "Model" && <ModelTabContent modelConfig={modelConfig} setModelConfig={setModelConfig} />}
         {activeTab === "Knowledgebase" && <KBTabContent selectedIds={selectedKnowledgeBaseIds} setSelectedIds={setSelectedKnowledgeBaseIds} />}
-        {activeTab === "Advanced" && <AdvancedTabContent agent={agentData} />}
+        {activeTab === "Widget" && <AdvancedTabContent agent={agentData} />}
         {activeTab === "Analysis" && <AnalysisTabContent />}
       </div>
     </div>
@@ -205,7 +209,7 @@ const KBTabContent = ({
     { id: number; filename: string }[]
   >([]);
   const { getToken } = useAuth();
-
+  const router = useRouter();
   useEffect(() => {
     const fetchKnowledgeBase = async () => {
       try {
@@ -256,32 +260,51 @@ const KBTabContent = ({
     );
   };
 
+  const handleCreateClick = () => {
+    router.push("/platform/knowledgebase");
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold">Knowledge Base</h2>
+        <button
+          onClick={handleCreateClick}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          + Create
+        </button>
+      </div>
+
+      {/* File List */}
       {knowledgeBase.length === 0 ? (
         <div className="text-gray-500 text-center">
           No knowledge base available
         </div>
       ) : (
-        knowledgeBase.map((file) => (
-          <button
-            key={file.id}
-            className={`block w-full p-2 text-left rounded ${
-              selectedIds.includes(file.id)
-                ? "bg-green-500 text-white"
-                : "bg-gray-200 text-gray-700"
-            }`}
-            onClick={() => toggleSelection(file.id)}
-          >
-            {file.filename}
-          </button>
-        ))
+        <div className="space-y-2">
+          {knowledgeBase.map((file) => (
+            <div
+              key={file.id}
+              className="flex items-center bg-gray-100 p-2 rounded"
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(file.id)}
+                onChange={() => toggleSelection(file.id)}
+                className="mr-3"
+              />
+              <span className="text-sm text-gray-800">{file.filename}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 };
 
-
+//HZ: Widget Tab Component
 const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
  const [color, setColor] = useState(agent?.theme_color || "#22c55e");
   const [greeting, setGreeting] = useState(agent?.greeting_message || "Hello! How can I help?");
@@ -572,7 +595,7 @@ window.location.reload();
                 checked={isPublic}
                 onChange={() => setIsPublic(true)}
               />
-              Public
+              Enable
             </label>
             <label className="flex items-center gap-1">
               <input
@@ -582,7 +605,7 @@ window.location.reload();
                 checked={!isPublic}
                 onChange={() => setIsPublic(false)}
               />
-              Private
+              Disable
             </label>
           </div>
         </div>
@@ -620,15 +643,6 @@ window.location.reload();
         <p className="text-sm text-gray-500 mt-1">
           Copy and paste this script into your website's HTML to embed the chat widget.
         </p>
-      </div>
-
-      <div className="mt-4">
-        <button
-          onClick={handleSubmit}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-        >
-          Submit
-        </button>
       </div>
     </div>
   );
