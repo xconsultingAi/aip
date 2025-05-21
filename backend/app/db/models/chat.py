@@ -18,7 +18,7 @@ class Conversation(Base):
     # Relationships
     user = relationship("User", back_populates="conversations")
     agent = relationship("Agent", back_populates="conversations")
-    messages = relationship("ChatMessage", back_populates="conversation")
+    messages = relationship("ChatMessage", back_populates="conversation", order_by="ChatMessage.sequence_id")
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
@@ -58,4 +58,5 @@ class ChatMessage(Base):
     __table_args__ = (
         Index('ix_chatmessages_user_agent', 'user_id', 'agent_id'),
         Index('ix_chatmessages_timestamp', 'timestamp'),
+        Index('ix_conversation_sequence', 'conversation_id', 'sequence_id', unique=True),
     )

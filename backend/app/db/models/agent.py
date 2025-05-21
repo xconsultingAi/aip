@@ -12,7 +12,8 @@ class Agent(Base):
     description = Column(String, nullable=True) 
     user_id = Column(String, ForeignKey("users.user_id"), nullable=False)
     is_public = Column(Boolean, default=False, nullable=False)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False) 
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    url_id = Column(Integer, ForeignKey("url_knowledge.id"), nullable=True)
     # SH: Column for LLM Configuration
     model_name = Column(String(50), default="gpt-4")
     temperature = Column(Float, default=0.7)
@@ -23,11 +24,12 @@ class Agent(Base):
     greeting_message = Column(String(200), default="Hello! How can I help?")
     theme_color = Column(String(7), default="#22c55e")  # Hex format
     embed_code = Column(Text, nullable=True)
-
+    is_public = Column(Boolean, default=False)
     # SH: Relationships with user and organization table
-    knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents")
+    knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents",overlaps="url_knowledge")
     owner = relationship("User", back_populates="agents")
-    organization = relationship("Organization", back_populates="agents", foreign_keys=[organization_id])
+    organization = relationship("Organization", back_populates="agents")
     chat_messages = relationship("ChatMessage", back_populates="agent")
     conversations = relationship("Conversation", back_populates="agent")
     widget_sessions = relationship("WidgetSession", back_populates="agent", cascade="all, delete-orphan")
+    url_knowledge = relationship("URLKnowledge", back_populates="agents", overlaps="knowledge_bases")

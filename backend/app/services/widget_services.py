@@ -2,19 +2,17 @@ import os
 import logging
 import datetime
 from typing import Dict, Any, Optional, List
-from fastapi import HTTPException, status, WebSocketException
+from fastapi import status, WebSocketException
 from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.llm import OpenAIClient
 from app.core.config import settings
 from app.core.vector_store import get_organization_vector_store
 from app.db.models.agent import Agent
-from app.db.models.chat import ChatMessage, Conversation
+from app.db.models.chat import ChatMessage
 from app.db.models.knowledge_base import KnowledgeBase
 from app.db.repository.chat import create_chat_message, create_conversation
-from app.db.repository.agent import get_agent, get_public_agent
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
@@ -196,19 +194,18 @@ class WidgetService:
             except Exception as e:
                 logger.warning(f"Loading KB failed {kb.id}: {e}")
         return "\n\n".join(texts)
-
-    @retry(stop=stop_after_attempt(3))
+    
     async def process_public_widget_message(
         self,
         db: AsyncSession,
-        visitor_id: str,
         agent_id: int,
         message: str
     ) -> Dict[str, Any]:
         try:
             if len(message) > settings.WIDGET_MAX_MESSAGE_LENGTH:
                 return {
-                    "content": f"Message exceeds maximum length of {settings.WIDGET_MAX_MESSAGE_LENGTH} characters",
+                    "content": f"Message exceeds maximum length of "
+                               f"{settings.WIDGET_MAX_MESSAGE_LENGTH} characters",
                     "error": "message_too_long"
                 }
 
@@ -219,15 +216,19 @@ class WidgetService:
                     "error": "agent_not_found"
                 }
 
+            theme_color = agent.theme_color
+            greeting    = agent.greeting_message
+            is_public   = agent.is_public
+
             try:
                 vector_store = get_organization_vector_store(agent.organization_id)
                 docs = await vector_store.asimilarity_search(message, k=3)
-                context = "\n".join([doc.page_content for doc in docs])
+                context = "\n".join(doc.page_content for doc in docs)
             except Exception as e:
-                logger.warning(f"RAG context failed: {str(e)}")
+                logger.warning(f"RAG context failed: {e}")
                 context = await self._fallback_context(agent.knowledge_bases)
 
-            response = await self.llm_client.generate(
+            llm_resp = await self.llm_client.generate(
                 model=agent.config.get("model_name", settings.WIDGET_DEFAULT_MODEL),
                 prompt=f"Context: {context}\n\nQuestion: {message}",
                 system_prompt=agent.config.get("system_prompt", "You are a helpful assistant"),
@@ -236,16 +237,19 @@ class WidgetService:
             )
 
             return {
-                "content": response["content"],
+                "content": llm_resp["content"],
                 "metadata": {
-                    "model": response.get("model"),
-                    "tokens_used": response.get("usage", {}).get("total_tokens", 0),
-                    "sources": [doc.metadata.get("source", "") for doc in docs]
+                    "model":          llm_resp.get("model"),
+                    "tokens_used":    llm_resp.get("usage", {}).get("total_tokens", 0),
+                    "sources":        [d.metadata.get("source", "") for d in docs],
+                    "theme_color":    theme_color,
+                    "greeting_message": greeting,
+                    "is_public":      is_public
                 }
             }
 
         except Exception as e:
-            logger.error(f"Error processing public widget message: {str(e)}")
+            logger.error(f"Error processing public widget message: {e}", exc_info=True)
             return {
                 "content": "Sorry, I encountered an error processing your message",
                 "error": str(e)

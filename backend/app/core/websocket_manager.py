@@ -1,5 +1,4 @@
 import logging
-import orjson
 import asyncio, uuid, zlib, json
 from collections import defaultdict
 from datetime import datetime
@@ -7,6 +6,9 @@ from typing import Dict, Set, Optional
 from fastapi import WebSocket, status
 from fastapi.exceptions import WebSocketException
 from app.core.config import settings
+from app.db.models.agent import Agent
+from sqlalchemy.future import select
+from app.db.database import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +201,15 @@ class ConnectionManager:
             await self._processing_task
         except asyncio.CancelledError:
             pass
+    async def validate_public_agent(self, agent_id: int, db: AsyncSession):
+        result = await db.execute(
+            select(Agent)
+            .where(
+                (Agent.id == agent_id) & 
+                (Agent.is_public == True)
+            )
+        )
+        return result.scalars().first()
 
 websocket_manager = ConnectionManager()
 
@@ -296,7 +307,11 @@ class WidgetConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         for connection_id, websocket in self.active_connections.get(agent_id, {}).items():
-            await self.send_direct(agent_id, notification, websocket)
+            try:
+                await websocket.send_json(notification)
+            except Exception as e:
+                logger.error(f"Failed to send system notification to widget (agent {agent_id}): {e}")
+                await self.disconnect(agent_id, websocket)
 
     async def process_messages(self):
         # Process queued messages and send them to connected WebSockets.
@@ -319,7 +334,6 @@ class WidgetConnectionManager:
             await asyncio.sleep(0)
 
     async def shutdown(self):
-        # Shutdown the connection manager gracefully.
         self._processing_task.cancel()
         try:
             await self._processing_task

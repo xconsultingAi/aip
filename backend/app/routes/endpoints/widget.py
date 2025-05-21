@@ -1,15 +1,16 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, logger
-from fastapi.responses import JSONResponse
 from app.core.websocket_manager import widget_manager
 from app.services.widget_services import WidgetService
 from app.db.database import get_db
 from app.core.config import settings
 import uuid
 from datetime import datetime
-import asyncio
+import logging
 
 router = APIRouter(tags=["widget"])
 widget_service = WidgetService()
+
+logger = logging.getLogger(__name__)
 
 @router.websocket("/ws/public/{agent_id}")
 async def public_widget_websocket(
@@ -54,11 +55,9 @@ async def public_widget_websocket(
 
                 response = await widget_service.process_public_widget_message(
                     db=db,
-                    visitor_id=visitor_id,
                     agent_id=agent_id,
                     message=data["content"]
                 )
-
                 await websocket.send_json({
                     "type": "message",
                     "content": response["content"],

@@ -26,8 +26,16 @@ class Settings(BaseSettings):
     RAG_K: int = 3
 
     #SH: for Knowledge base
-    MAX_FILE_SIZE: int = 10_485_760
-    ALLOWED_CONTENT_TYPES: List[str] = ["application/pdf", "text/plain"]
+    MAX_FILE_SIZE: int = 10_485_760 # 10MB
+    ALLOWED_CONTENT_TYPES: List[str] = [
+    "application/pdf", # PDF
+    "text/plain", # TEXT
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # DOCX
+    "text/html",  # HTML
+    "text/csv",  # CSV
+    "application/vnd.ms-excel",  # XLS
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"  # XLSX
+    ]
     CHUNK_SIZE: int = 1000
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     KNOWLEDGE_DIR: str = "data"
@@ -60,6 +68,13 @@ class Settings(BaseSettings):
     WIDGET_DEFAULT_MODEL: str = "gpt-3.5-turbo"
     WIDGET_MAX_CONTEXT_TOKENS: int = 2000
     WIDGET_ANONYMOUS_PREFIX: str = "visitor-"
+    
+    # For Url_scraping
+    SCRAPER_USER_AGENT: str = "AI Knowledge Scraper/1.0"
+    MAX_CRAWL_DEPTH: int = 3
+    REQUEST_DELAY: float = 2.0 # Seconds between requests
+    KNOWLEDGE_BASE_DIR: str = "knowledge_data"
+    SCRAPED_PDFS_SUBDIR: str = "scraped_pdfs" 
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"

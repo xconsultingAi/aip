@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.responses import error_response
+from tenacity import RetryError
 #TODO: Add more exception handlers in this
 
 logger = logging.getLogger("exception.handler")
@@ -53,4 +54,12 @@ def network_exception(detail: str = "Connection to AI service failed") -> HTTPEx
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail=f"Network Error: {detail}",
         headers={"Retry-After": "30"},
+    )
+
+async def retry_error_handler(request: Request, exc: RetryError):
+    original_exc = exc.last_attempt.exception()
+    logger.error(f"Retry failed after {exc.last_attempt.attempt_number} attempts: {str(original_exc)}")
+    return error_response(
+        message=f"Operation failed after retries: {str(original_exc)}",
+        http_status=status.HTTP_400_BAD_REQUEST
     )
