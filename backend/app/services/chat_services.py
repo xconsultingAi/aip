@@ -6,11 +6,9 @@ import openai
 from app.db.repository.chat import create_chat_message, create_conversation, get_conversation_by_id
 from app.db.database import AsyncSession
 from app.core.vector_store import get_organization_vector_store
-from functools import lru_cache
 from app.core.config import settings
 from sqlalchemy import select, func
 from app.db.models.chat import ChatMessage, Conversation
-from app.db.repository.agent import get_agent
 from app.db.models.agent import Agent
 import logging
 from sqlalchemy.orm import selectinload
@@ -78,6 +76,11 @@ async def process_agent_response(
             "conversation_id": conversation_id
         })
 
+        #SH: merged config values from agent
+        temperature = agent.config.get("temperature", 0.7)
+        model_name = agent.config.get("model_name", "gpt-4")
+        system_prompt = agent.config.get("system_prompt", "You are a helpful assistant")
+
         #SH: Step 6: Generate agent response using LLM
         llm_client = OpenAIClient()
         response = await llm_client.generate(
@@ -105,7 +108,10 @@ async def process_agent_response(
                 "model": agent.config.get("model_name"),
                 "tokens_used": response.get("usage", {}).get("total_tokens", 0),
                 "cost": response.get("cost", 0),
-                "sources": await get_knowledge_sources(agent.knowledge_bases)
+                "sources": await get_knowledge_sources(agent.knowledge_bases),
+                "theme_color": agent.theme_color,
+                "greeting": agent.greeting_message,
+                "is_public": agent.is_public
             }
         }
 

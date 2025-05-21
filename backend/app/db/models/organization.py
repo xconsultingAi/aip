@@ -12,7 +12,8 @@ class Organization(Base):
     
     # SH:Relationships with user and agent table
     users = relationship("User", back_populates="organization") 
-    agents = relationship("Agent", back_populates="organization")
+    agents = relationship("Agent", back_populates="organization", cascade="all, delete-orphan")
     
     # SH:Relationship with knowldge base  
-    knowledge_bases = relationship("KnowledgeBase", back_populates="organization")
+    knowledge_bases = relationship("KnowledgeBase", back_populates="organization",overlaps="url_knowledge",cascade="all, delete-orphan")
+    url_knowledge = relationship("URLKnowledge", back_populates="organization",overlaps="knowledge_bases",cascade="all, delete-orphan")

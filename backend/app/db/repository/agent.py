@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.agent import Agent as AgentDB
 from app.db.models.user import User
-from app.models.agent import AgentCreate, AgentConfigSchema, AgentAdvanceSettings
+from app.models.agent import AgentCreate, AgentConfigSchema
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, status
 from sqlalchemy.orm import load_only
@@ -153,7 +153,7 @@ async def update_agent_config(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to update this agent"
             )
-        
+
         #SH: Validate the config
         if not isinstance(config, AgentConfigSchema):
             logger.error("Invalid config format")
@@ -161,9 +161,22 @@ async def update_agent_config(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid configuration format"
             )
-            
+        #SH: Update core config
+        db_agent.model_name = config.model_name
+        db_agent.temperature = config.temperature
+        db_agent.max_length = config.max_length
+        db_agent.system_prompt = config.system_prompt
+        # Update widget settings
+        db_agent.greeting_message = config.greeting_message
+        db_agent.theme_color = config.theme_color
+        db_agent.embed_code = config.embed_code
+        db_agent.is_public = config.is_public           
         db_agent.config = config.model_dump()
-        
+
+        if config.knowledge_base_ids:
+            await validate_knowledge_access(db, config.knowledge_base_ids, db_agent.organization_id)
+            await update_agent_knowledge(db, agent_id, config.knowledge_base_ids)
+
         #SH: Commit changes
         await db.commit()
         await db.refresh(db_agent)
@@ -223,42 +236,3 @@ async def update_agent_knowledge(
         await db.execute(insert_stmt)
     
     await db.commit()
-    
-async def update_agent_advance_settings_repo(
-    db: AsyncSession,
-    agent_id: int,
-    settings: AgentAdvanceSettings,
-    user_id: str
-) -> AgentDB:
-    try:
-        result = await db.execute(
-            select(AgentDB).where(
-                (AgentDB.id == agent_id) &
-                (AgentDB.user_id == user_id)
-            )
-        )
-        agent = result.scalars().first()
-        
-        if not agent:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Agent not found or access denied"
-            )
-
-        # Update fields
-        agent.greeting_message = settings.greeting_message
-        agent.theme_color = settings.theme_color
-        agent.embed_code = settings.embed_code
-        agent.is_public = settings.is_public
-
-        await db.commit()
-        await db.refresh(agent, ["knowledge_bases"])  # Load relationships
-        return agent
-
-    except SQLAlchemyError as e:
-        await db.rollback()
-        logger.error(f"Database error updating settings: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database operation failed"
-        )

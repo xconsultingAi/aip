@@ -11,21 +11,23 @@ class AgentConfigSchema(BaseModel):
     knowledge_base_ids: List[int] = Field(default=[], description="Associated knowledge base IDs")
     
     #SH: advanced settings for widget
-    greeting_message: Optional[str] = "Hello! How can I help?"
+    greeting_message: str = Field(default="Hello! How can I help?", min_length=1, max_length=200)
     theme_color: Optional[str] = "#22c55e"
     embed_code: Optional[str] = None
     is_public: Optional[bool] = False
+    
 # Base Agent Model
 class AgentBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="Agent name is compulsory")
     description: Optional[str] = Field(None, max_length=255, description="Description is optional")
     organization_id: int = Field(..., description="Organization ID is compulsory")
     
-class AgentAdvanceSettings(BaseModel):
-    greeting_message: str = "Hello! How can I help?"
-    theme_color: str = "#22c55e"
-    embed_code: Optional[str] = None
-    is_public: bool = False
+
+    greeting_message: str = Field(default="Hello! How can I help?", min_length=1,max_length=200, description="Greeting message (max 50 words)")
+    theme_color: str = Field(default="#22c55e", pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$", description="Hex color code (e.g. #RRGGBB or #RGB)")
+    embed_code: Optional[str] = Field(default=None, description="Custom embed code for widget")
+    is_public: bool = Field(default=False, description="Make agent publicly accessible")
+
 
 # Agent Creation Model
 class AgentCreate(AgentBase):
@@ -43,6 +45,7 @@ class AgentOut(AgentBase):
     theme_color: str
     embed_code: Optional[str]
     is_public: bool
+    
 
 # Agent Response Model
 class AgentResponse(BaseModel):
