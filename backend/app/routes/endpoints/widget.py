@@ -7,11 +7,13 @@ import uuid
 from datetime import datetime
 import logging
 
+# SH: This is our Main Router for all the routes related to Widgets
 router = APIRouter(tags=["widget"])
 widget_service = WidgetService()
 
 logger = logging.getLogger(__name__)
 
+# SH: This is our WebSocket endpoint for the public widget
 @router.websocket("/ws/public/{agent_id}")
 async def public_widget_websocket(
     websocket: WebSocket,
@@ -19,20 +21,21 @@ async def public_widget_websocket(
 ):
     await websocket.accept()
     
-    # Get async database session
+    # SH: Get async database session
     db_gen = get_db()
     db = await anext(db_gen)  # Use await with async next
     
+    # SH: Generate a unique visitor ID
     visitor_id = f"{settings.WIDGET_ANONYMOUS_PREFIX}{uuid.uuid4()}"
     
     try:
-        # Verify agent exists and is public
+        # SH: Verify agent exists and is public
         agent = await widget_service.verify_public_agent(db, agent_id)
         if not agent:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        # Register visitor session
+        # SH: Register visitor session
         await widget_manager.connect_visitor(agent_id, visitor_id, websocket)
         
         await websocket.send_json({
@@ -76,6 +79,7 @@ async def public_widget_websocket(
                 })
 
     finally:
+        # SH: Disconnect visitor session
         await widget_manager.disconnect_visitor(visitor_id)
         try:
             await anext(db_gen)

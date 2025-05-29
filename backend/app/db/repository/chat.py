@@ -6,7 +6,7 @@ from app.db.models.chat import ChatMessage
 from app.db.models.chat import Conversation
 from fastapi import HTTPException
 
-# SH: TODO - Implement real-time streaming of chat messages
+#SH: Create conversation
 async def create_conversation(db: AsyncSession, conversation_data: dict):
     db_conv = Conversation(**conversation_data)
     db.add(db_conv)
@@ -14,6 +14,7 @@ async def create_conversation(db: AsyncSession, conversation_data: dict):
     await db.refresh(db_conv)
     return db_conv
 
+#SH: Update conversation title
 async def update_conversation_title(db: AsyncSession, conversation_id: int, new_title: str):
     result = await db.execute(
         update(Conversation)
@@ -23,13 +24,14 @@ async def update_conversation_title(db: AsyncSession, conversation_id: int, new_
     await db.commit()
     return result.rowcount
 
+#SH: Delete conversation
 async def delete_conversation(db: AsyncSession, conversation_id: int):
-    # Delete messages first
+    #SH: Delete messages first
     await db.execute(
         delete(ChatMessage)
         .where(ChatMessage.conversation_id == conversation_id)
     )
-    # Then delete conversation
+    #SH: Then delete conversation
     result = await db.execute(
         delete(Conversation)
         .where(Conversation.id == conversation_id)
@@ -37,6 +39,7 @@ async def delete_conversation(db: AsyncSession, conversation_id: int):
     await db.commit()
     return result.rowcount
 
+#SH: Create chat message
 async def create_chat_message(db: AsyncSession, message_data: dict):
     try:
         # Add conversation_id validation
@@ -68,7 +71,6 @@ async def create_chat_message(db: AsyncSession, message_data: dict):
             )
             max_sequence = result.scalar() or 0
             message_data["sequence_id"] = max_sequence + 1
-        
         #SH: Create a new ChatMessage object and add it to the session
         db_message = ChatMessage(**message_data)
         db.add(db_message)
@@ -108,12 +110,13 @@ async def fetch_chat_history(
     #SH: Return the list of ChatMessage objects
     return result.scalars().all()
 
+#SH: Get conversation by id
 async def get_conversation_by_id(
     db: AsyncSession, 
     conversation_id: int,
     user_id: str
 ) -> Conversation | None:
-    # Get single conversation with messages
+    #SH: Get single conversation with messages
     result = await db.execute(
         select(Conversation)
         .where(
@@ -124,6 +127,7 @@ async def get_conversation_by_id(
     )
     return result.scalars().first()
 
+#SH: Update conversation title
 async def update_conversation_title(db: AsyncSession, conversation_id: int, new_title: str):
     new_title = new_title.strip() or "New Chat"
     result = await db.execute(
@@ -134,31 +138,44 @@ async def update_conversation_title(db: AsyncSession, conversation_id: int, new_
     await db.commit()
     return result.rowcount
 
+#SH: Get user conversation count
 async def get_user_conversation_count(
     db: AsyncSession, 
     user_id: str  # Expects string user_id
 ) -> int:
-    """
-    Get total count of conversations for a user
-    """
+    #SH: Get total count of conversations for a user
     result = await db.execute(
         select(func.count(Conversation.id))
         .where(Conversation.user_id == user_id)
     )
     return result.scalar() or 0
 
+#SH: Get conversation
 async def get_conversation(
     db: AsyncSession,
     user_id: str,
     agent_id: int
 ) -> list[Conversation]:
-    """Get all conversations for a user-agent pair"""
+    #SH: Get all conversations for a user-agent pair
     result = await db.execute(
         select(Conversation)
         .where(
             (Conversation.user_id == user_id) &
             (Conversation.agent_id == agent_id)
         )
+        .order_by(Conversation.updated_at.desc())
+    )
+    return result.scalars().all()
+
+#SH: Get all conversations for a user across all agents
+async def get_all_user_conversations(
+    db: AsyncSession, 
+    user_id: str
+) -> list[Conversation]:
+    #SH: Get all conversations for a user across all agents
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.user_id == user_id)
         .order_by(Conversation.updated_at.desc())
     )
     return result.scalars().all()

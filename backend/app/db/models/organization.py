@@ -17,3 +17,5 @@ class Organization(Base):
     # SH:Relationship with knowldge base  
     knowledge_bases = relationship("KnowledgeBase", back_populates="organization",overlaps="url_knowledge",cascade="all, delete-orphan")
     url_knowledge = relationship("URLKnowledge", back_populates="organization",overlaps="knowledge_bases",cascade="all, delete-orphan")
+    youtube_knowledge = relationship("YouTubeKnowledge", back_populates="organization", overlaps="knowledge_bases", cascade="all, delete-orphan")
+    text_knowledge = relationship("TextKnowledge", back_populates="organization", overlaps="knowledge_bases", cascade="all, delete-orphan")

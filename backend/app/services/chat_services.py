@@ -114,11 +114,11 @@ async def process_agent_response(
                 "is_public": agent.is_public
             }
         }
-
+    #SH: Handle network errors
     except openai.APIConnectionError as e:
         logger.error(f"Network error: {str(e)}")
         raise network_exception("Connection to AI service failed") from e
-    except WebSocketException:
+    except WebSocketException:  #SH: Handle WebSocket exceptions
         raise
     except Exception as e:
         logger.exception(f"Error processing agent message: {str(e)}", exc_info=True)

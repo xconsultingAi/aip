@@ -20,6 +20,8 @@ from typing import List
 import re
 from app.db.models.agent import Agent
 from app.db.models.knowledge_base import KnowledgeBase
+from app.db.models.chat import Conversation
+from app.models.chat import ConversationOut
 
 # MJ: This is our Main Router for all the routes related to Agents
 router = APIRouter(
@@ -29,6 +31,7 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
+#SH: Get all agents
 @router.get("/", response_model=list[AgentOut])
 async def read_agents(
         db: AsyncSession = Depends(get_db),
@@ -42,6 +45,8 @@ async def read_agents(
     # Convert to Pydantic model
     agents_out = [AgentOut.model_validate(agent.__dict__) for agent in agents]  
     return success_response("Agents retrieved successfully", data=agents_out)
+
+#SH: Get agent by id
 @router.get("/{agent_id}", response_model=AgentOut)
 async def read_agent(
         agent_id: int, 
@@ -56,7 +61,8 @@ async def read_agent(
         )
     # Convert SQLAlchemy object to Pydantic model
     return AgentOut.model_validate(agent, from_attributes=True)
-       
+
+#SH: Create new agent
 @router.post("/", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
 async def create_new_agent(
     agent: AgentCreate,
@@ -64,9 +70,6 @@ async def create_new_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Create a new agent with default configuration and link it to knowledge bases.
-    """
     try:
         # Validate KBs belong to the same organization as the user
         await validate_knowledge_access(db, knowledge_ids, current_user.organization_id)
@@ -106,7 +109,7 @@ async def create_new_agent(
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# agent configuration
+#SH: Update agent configuration
 @router.put("/{agent_id}/config", response_model=AgentOut)
 async def update_agent_configuration(
     agent_id: int,
@@ -114,10 +117,7 @@ async def update_agent_configuration(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Update the configuration of an existing agent, including knowledge base associations.
-    """
-    # Validate configuration
+    #SH: Validate configuration
     if config.model_name not in ALLOWED_MODELS:
         return error_response(
             message=f"Invalid model selected. Allowed models: {ALLOWED_MODELS}",
@@ -133,16 +133,16 @@ async def update_agent_configuration(
             message="Max length must be greater than 0",
             http_status=status.HTTP_400_BAD_REQUEST
         )
-    # Validate color format
+    #SH: Validate color format
     if not re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', config.theme_color):
         return error_response("Invalid color format", 400)
     
-    # Validate knowledge base IDs (Ensuring they belong to the agent's organization)
+    #SH: Validate knowledge base IDs (Ensuring they belong to the agent's organization)
     if config.knowledge_base_ids:
         agent = await get_agent(db, agent_id, current_user.user_id)  # Fetch agent details
         await validate_knowledge_access(db, config.knowledge_base_ids, agent.organization_id)  # Validate KB access
         
-        # Fetch existing KB IDs to check validity
+        #SH: Fetch existing KB IDs to check validity
         result = await db.execute(
             select(KnowledgeBase.id).where(KnowledgeBase.id.in_(config.knowledge_base_ids))
         )
@@ -152,7 +152,7 @@ async def update_agent_configuration(
             return error_response("Invalid knowledge base IDs", 400)
     
     try:
-        # Update agent configuration
+        #SH: Update agent configuration
         updated_agent = await update_agent_config(
             db=db,
             agent_id=agent_id,
@@ -160,10 +160,10 @@ async def update_agent_configuration(
             user_id=current_user.user_id
         )
         
-        # Update agent's knowledge bases
+        #SH: Update agent's knowledge bases
         await update_agent_knowledge(db, agent_id, config.knowledge_base_ids)
 
-        # Prepare response
+        #SH: Prepare response
         agent_dict = updated_agent.__dict__
         agent_dict.pop('_sa_instance_state', None)
         
@@ -179,7 +179,8 @@ async def update_agent_configuration(
             message="An unexpected error occurred.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-        
+
+#SH: Chat with agent
 @router.post("/{agent_id}/chat")
 async def chat_with_agent(
     agent_id: int,
@@ -187,17 +188,17 @@ async def chat_with_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Fetch agent
+    #SH: Fetch agent
     agent = await get_agent(db, agent_id, current_user.user_id)
     if not agent:
         return error_response("Agent not found", status.HTTP_404_NOT_FOUND)
 
-    # load the knowledge_bases relationship
+    #SH: load the knowledge_bases relationship
     await db.refresh(agent, ["knowledge_bases"])
     knowledge_bases = agent.knowledge_bases
 
     try:
-        # Generating the response using the agent configuration and knowledge base
+        #SH: Generating the response using the agent configuration and knowledge base
         response = await generate_llm_response(
             prompt=prompt,
             db= db,
@@ -220,6 +221,7 @@ async def chat_with_agent(
     except invalid_api_key_error:
         return error_response("Invalid OpenAI configuration", status.HTTP_401_UNAUTHORIZED)
 
+#SH: Link knowledge
 @router.post("/{agent_id}/knowledge")
 async def link_knowledge(
     agent_id: int,
@@ -231,12 +233,12 @@ async def link_knowledge(
     print(f"Knowledge IDs: {request_data.knowledge_ids}")
     print(f"Chunk Count: {request_data.chunk_count}")
 
-    # Ensure knowledge_ids is a valid list
+    #SH: Ensure knowledge_ids is a valid list
     if not request_data.knowledge_ids or not isinstance(request_data.knowledge_ids, list):
         raise HTTPException(status_code=400, detail="Knowledge IDs must be a non-empty list")
 
     try:
-        # Ensure agent exists
+        #SH: Ensure agent exists
         agent_exists = await db.execute(select(Agent).where(Agent.id == agent_id))
         if not agent_exists.scalars().first():
             raise HTTPException(
@@ -264,3 +266,27 @@ async def link_knowledge(
         return success_response("Knowledge bases linked", data={"agent_id": agent_id, "knowledge_ids": request_data.knowledge_ids})
     except HTTPException as e:
         return error_response(e.detail, e.status_code)
+    
+#SH: Get user conversations
+@router.get("/user/conversations", response_model=list[ConversationOut])
+async def get_user_conversations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        #SH: Get all conversations where user_id matches
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.user_id == current_user.user_id)
+            .order_by(Conversation.updated_at.desc())
+        )
+        conversations = result.scalars().all()
+        
+        return [ConversationOut.model_validate(c) for c in conversations]
+        
+    except Exception as e:
+        logger.error(f"Error fetching user conversations: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve conversations"
+        )

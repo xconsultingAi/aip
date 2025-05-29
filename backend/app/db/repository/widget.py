@@ -3,6 +3,7 @@ from sqlalchemy.future import select
 from app.db.models.widget import WidgetSession
 from fastapi import HTTPException
 
+#SH: Create widget session
 async def create_widget_session(
     db: AsyncSession, 
     visitor_id: str, 
@@ -14,6 +15,7 @@ async def create_widget_session(
     await db.refresh(session)
     return session
 
+#SH: Update widget session
 async def update_widget_session(
     db: AsyncSession,
     visitor_id: str,

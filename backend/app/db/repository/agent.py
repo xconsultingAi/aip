@@ -12,6 +12,7 @@ from sqlalchemy.sql.expression import delete, insert
 from typing import List
 import logging
 from app.db.database import SessionLocal
+from app.db.models.chat import Conversation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -20,7 +21,7 @@ logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %
 
 async def get_db():
     async with SessionLocal() as session:
-        # Explicit transaction start
+        #SH: Explicit transaction start
         await session.begin()
         try:
             yield session
@@ -42,7 +43,7 @@ async def get_agents(db: AsyncSession, user_id: int):
         )
 
 async def get_public_agent(db: AsyncSession, agent_id: int):
-    """Get agent without user verification for public access"""
+    #SH: Get agent without user verification for public access
     try:
         result = await db.execute(
             select(AgentDB)
@@ -67,12 +68,13 @@ async def get_public_agent(db: AsyncSession, agent_id: int):
         return agent
 
     except SQLAlchemyError as e:
-        # Log this if needed
+        #SH: Log this if needed
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"RA02: An error occurred while retrieving public agent {agent_id}"
         )
 
+#SH: Get agent
 async def get_agent(db: AsyncSession, agent_id: int, user_id: str):
     
     #SH: Retrieve a specific agent by ID for a specific user
@@ -85,6 +87,7 @@ async def get_agent(db: AsyncSession, agent_id: int, user_id: str):
             detail=f"RA02: An error occurred while retrieving agent {agent_id}"
         )
 
+#SH: Create agent
 async def create_agent(
     db: AsyncSession, 
     agent: AgentCreate, 
@@ -126,6 +129,7 @@ async def create_agent(
             detail="RA03: Database error while creating agent"
         )
 
+#SH: Update agent config
 async def update_agent_config(
     db: AsyncSession, 
     agent_id: int, 
@@ -166,7 +170,7 @@ async def update_agent_config(
         db_agent.temperature = config.temperature
         db_agent.max_length = config.max_length
         db_agent.system_prompt = config.system_prompt
-        # Update widget settings
+        #SH: Update widget settings
         db_agent.greeting_message = config.greeting_message
         db_agent.theme_color = config.theme_color
         db_agent.embed_code = config.embed_code
@@ -202,6 +206,7 @@ async def update_agent_config(
             detail="RA04: Unexpected error while updating agent configuration"
         )
 
+#SH: Validate knowledge access
 async def validate_knowledge_access(db: AsyncSession, knowledge_ids: List[int], organization_id: int):
     #SH: Check all KBs belong to the same organization
     result = await db.execute(

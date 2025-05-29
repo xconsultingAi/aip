@@ -33,3 +33,6 @@ class Agent(Base):
     conversations = relationship("Conversation", back_populates="agent")
     widget_sessions = relationship("WidgetSession", back_populates="agent", cascade="all, delete-orphan")
     url_knowledge = relationship("URLKnowledge", back_populates="agents", overlaps="knowledge_bases")
+    youtube_knowledge = relationship("YouTubeKnowledge", back_populates="agents", overlaps="knowledge_bases")
+    text_knowledge = relationship("TextKnowledge", back_populates="agents", overlaps="knowledge_bases")
+
