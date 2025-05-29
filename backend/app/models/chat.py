@@ -13,7 +13,7 @@ class ConversationCreate(ConversationBase):
 class UserConversationCount(BaseModel):
     user_id: str
     total_conversations: int
-
+    
 class ConversationOut(ConversationBase):
     id: int
     title: str
@@ -48,6 +48,6 @@ class ConversationWithMessages(BaseModel):
     updated_at: Optional[datetime] = None
     messages: List[ChatMessageOut]
     
-    
+    #SH: Config for Pydantic
     class Config:
         from_attributes = True

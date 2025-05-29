@@ -69,12 +69,19 @@ class Settings(BaseSettings):
     WIDGET_MAX_CONTEXT_TOKENS: int = 2000
     WIDGET_ANONYMOUS_PREFIX: str = "visitor-"
     
-    # For Url_scraping
+    #SH: For Url_scraping
     SCRAPER_USER_AGENT: str = "AI Knowledge Scraper/1.0"
     MAX_CRAWL_DEPTH: int = 3
     REQUEST_DELAY: float = 2.0 # Seconds between requests
     KNOWLEDGE_BASE_DIR: str = "knowledge_data"
     SCRAPED_PDFS_SUBDIR: str = "scraped_pdfs" 
+    ALLOWED_URL_FORMATS: List[str] = ["webpage", "html", "pdf"]
+    
+    #SH: For Video and text
+    YOUTUBE_PDFS_SUBDIR: str = "youtube_pdfs"
+    ALLOWED_YOUTUBE_DOMAINS: List[str] = ["youtube.com", "youtu.be"]
+    TEXT_PDFS_SUBDIR: str = "text_pdfs"
+    MAX_TEXT_LENGTH: int = 10_000  # 10k characters 
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"

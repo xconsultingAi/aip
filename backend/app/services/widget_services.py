@@ -2,27 +2,31 @@ import os
 import logging
 import datetime
 from typing import Dict, Any, Optional, List
-from fastapi import status, WebSocketException
+from fastapi import HTTPException, status, WebSocketException
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.llm import OpenAIClient
 from app.core.config import settings
 from app.core.vector_store import get_organization_vector_store
 from app.db.models.agent import Agent
-from app.db.models.chat import ChatMessage
+from app.db.models.chat import ChatMessage, Conversation
 from app.db.models.knowledge_base import KnowledgeBase
 from app.db.repository.chat import create_chat_message, create_conversation
+from app.db.repository.agent import get_agent, get_public_agent
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
+#SH: Text splitter
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200
 )
 
+#SH: Verify agent access
 async def verify_agent_access(db: AsyncSession, agent_id: int, user_id: Optional[str]):
     if user_id:
         result = await db.execute(
@@ -41,6 +45,7 @@ async def verify_agent_access(db: AsyncSession, agent_id: int, user_id: Optional
         )
     return agent
 
+#SH: Validate message sequence
 async def validate_message_sequence(
     db: AsyncSession,
     user_id: Optional[str],
@@ -65,6 +70,7 @@ async def validate_message_sequence(
         )
     return last_seq
 
+#SH: Get knowledge sources
 async def get_knowledge_sources(knowledge_bases: List[KnowledgeBase]) -> List[Dict[str, Any]]:
     return [
         {
@@ -75,10 +81,12 @@ async def get_knowledge_sources(knowledge_bases: List[KnowledgeBase]) -> List[Di
         for kb in knowledge_bases
     ]
 
+#SH: Widget service
 class WidgetService:
     def __init__(self):
         self.llm_client = OpenAIClient()
 
+    #SH: Verify public agent
     async def verify_public_agent(self, db: AsyncSession, agent_id: int):
         """Verify agent exists and is marked as public"""
         result = await db.execute(
@@ -87,6 +95,7 @@ class WidgetService:
         )
         return result.scalar_one_or_none()
 
+    #SH: Process widget message 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -182,6 +191,7 @@ class WidgetService:
             }
         }
 
+    #SH: Fallback context
     async def _fallback_context(self, knowledge_bases: List[KnowledgeBase]) -> str:
         texts = []
         for kb in knowledge_bases:
@@ -194,7 +204,8 @@ class WidgetService:
             except Exception as e:
                 logger.warning(f"Loading KB failed {kb.id}: {e}")
         return "\n\n".join(texts)
-    
+
+    #SH: Process public widget message
     async def process_public_widget_message(
         self,
         db: AsyncSession,

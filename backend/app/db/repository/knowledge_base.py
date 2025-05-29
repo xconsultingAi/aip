@@ -1,11 +1,14 @@
 from datetime import datetime
 from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models.knowledge_base import KnowledgeBase, URLKnowledge, agent_knowledge 
+from app.db.models.knowledge_base import KnowledgeBase, TextKnowledge, URLKnowledge, YouTubeKnowledge
 from app.models.knowledge_base import KnowledgeBaseCreate
+from app.db.models.agent import agent_knowledge
 from fastapi import HTTPException, status
 from sqlalchemy import select, func
 from typing import Any, Dict, List, Optional
+from app.core.youtube_processer import YouTubeProcessor
+from app.db.models.chat import Conversation
 
 # SH: This file will contain all the database operations related to the Knowledge base Models
 
@@ -26,7 +29,7 @@ async def create_knowledge_entry(
         knowledge_ids = []
 
     try:
-        # Create dict from knowledge_data without unpacking it directly
+        # SH: Create dict from knowledge_data without unpacking it directly
         knowledge_dict = knowledge_data.model_dump()
 
         # SH: Create a new KnowledgeBase ORM object using the provided data
@@ -66,33 +69,31 @@ async def get_organization_knowledge_bases(
     db: AsyncSession, 
     organization_id: int
 ) -> list[KnowledgeBase]:
-    """
-    Retrieve all knowledge bases belonging to a specific organization
-    """
+    # SH: Retrieve all knowledge bases belonging to a specific organization
     result = await db.execute(
         select(KnowledgeBase)
         .where(KnowledgeBase.organization_id == organization_id)
     )
     return result.scalars().all()
 
+#SH: Get organization knowledge count
 async def get_organization_knowledge_count(
     db: AsyncSession, 
     organization_id: int
 ) -> int:
-    """
-    Get count of knowledge bases belonging to a specific organization
-    """
+    # SH: Get count of knowledge bases belonging to a specific organization
     result = await db.execute(
         select(func.count(KnowledgeBase.id))
         .where(KnowledgeBase.organization_id == organization_id)
     )
     return result.scalar_one()
 
-# For Url_knowledge 
+#SH: For Url_knowledge 
 async def create_url_knowledge(
     db: AsyncSession,
     name: str,
     url: str,
+    url_format: str,
     organization_id: int,
     file_path: str,
     filename: str,
@@ -115,9 +116,10 @@ async def create_url_knowledge(
             chunk_count=chunk_count,
             source_type="url",
             url=url,
+            url_format=url_format,
             crawl_depth=crawl_depth,
             include_links=include_links,
-            last_crawled=datetime.utcnow(),
+            last_crawled=datetime.now(),
             file_path=file_path,
             domain_name=domain
         )
@@ -133,13 +135,13 @@ async def create_url_knowledge(
             detail=f"Failed to create URL knowledge: {str(e)}"
         )
 
+#SH: Get agent count for knowledge  
 async def get_agent_count_for_knowledge(
     db: AsyncSession, 
     kb_id: int, 
     organization_id: int
 ) -> int:
-    """Get count of agents linked to a knowledge base"""
-    # Check if knowledge base exists in organization
+    # SH: Get count of agents linked to a knowledge base
     kb_exists = await db.execute(
         select(KnowledgeBase)
         .where(
@@ -147,27 +149,26 @@ async def get_agent_count_for_knowledge(
             KnowledgeBase.organization_id == organization_id
         )
     )
+    #SH: Check if the knowledge base exists
     if not kb_exists.scalar_one_or_none():
         raise HTTPException(
             status_code=404,
             detail="Knowledge base not found in your organization"
         )
     
-    # Count linked agents
+    #SH: Count linked agents
     agent_count = await db.execute(
         select(func.count(agent_knowledge.c.agent_id))
         .where(agent_knowledge.c.knowledge_id == kb_id)
     )
     return agent_count.scalar_one()        
 
-# for Format count
+#SH: Get knowledge format counts
 async def get_knowledge_format_counts(
     db: AsyncSession,
     organization_id: int
 ) -> List[Dict[str, Any]]:
-    """
-    Get count of knowledge bases grouped by format for a specific organization
-    """
+    # SH: Get count of knowledge bases grouped by format for a specific organization
     result = await db.execute(
         select(
             KnowledgeBase.format,
@@ -177,3 +178,114 @@ async def get_knowledge_format_counts(
         .group_by(KnowledgeBase.format)
     )
     return [{"format": row.format, "count": row.count} for row in result.all()]
+
+#SH: Create youtube knowledge
+async def create_youtube_knowledge(
+    db: AsyncSession,
+    name: str,
+    video_url: str,
+    organization_id: int,
+    file_path: str,
+    transcript: str,
+    filename: str,
+    video_format: str
+) -> YouTubeKnowledge:
+    try:
+        processor = YouTubeProcessor()
+        video_id = processor.extract_video_id(video_url)  # Extract video_id here
+        
+        # Check for existing video first
+        existing = await db.execute(
+            select(YouTubeKnowledge)
+            .where(YouTubeKnowledge.video_id == video_id)
+        )
+        if existing.scalar_one_or_none():
+            raise ValueError(f"YouTube video {video_id} already exists")
+
+        youtube_knowledge = YouTubeKnowledge(
+            name=name,
+            filename=filename,
+            content_type="application/pdf",
+            format="pdf",
+            organization_id=organization_id,
+            file_size=len(transcript.encode('utf-8')),
+            chunk_count=0,
+            source_type="youtube",
+            video_url=video_url,
+            video_id=video_id,  # Use extracted video_id
+            transcript_length=len(transcript),
+            format_data=video_format,
+            file_path=file_path
+        )
+        
+        db.add(youtube_knowledge)
+        await db.commit()
+        await db.refresh(youtube_knowledge)
+        return youtube_knowledge
+    except ValueError as ve:
+        raise ve
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create YouTube knowledge: {str(e)}"
+        )
+
+#SH: Create text knowledge
+async def create_text_knowledge(
+    db: AsyncSession,
+    name: str,
+    text_content: str,
+    organization_id: int,
+    file_path: str,
+    filename: str,
+    content_hash: str,
+    text_format: str
+) -> TextKnowledge:
+    try:
+        text_knowledge = TextKnowledge(
+            name=name,
+            filename=filename,
+            content_type="application/pdf",
+            format="pdf",
+            organization_id=organization_id,
+            file_size=len(text_content.encode('utf-8')),
+            chunk_count=0,  # Will be updated after processing
+            source_type="text",
+            content_hash=content_hash,
+            file_path=file_path,
+            format_data=text_format
+        )
+        
+        db.add(text_knowledge)
+        await db.commit()
+        await db.refresh(text_knowledge)
+        return text_knowledge
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create Text knowledge: {str(e)}"
+        )
+
+#SH: Get organization text knowledge count
+async def get_organization_text_knowledge_count(
+    db: AsyncSession, 
+    organization_id: int
+) -> int:
+    result = await db.execute(
+        select(func.count(TextKnowledge.id))
+        .where(TextKnowledge.organization_id == organization_id)
+    )
+    return result.scalar_one()
+
+#SH: Get organization video knowledge count 
+async def get_organization_video_knowledge_count(
+    db: AsyncSession, 
+    organization_id: int
+) -> int:
+    result = await db.execute(
+        select(func.count(YouTubeKnowledge.id))
+        .where(YouTubeKnowledge.organization_id == organization_id)
+    )
+    return result.scalar_one()
