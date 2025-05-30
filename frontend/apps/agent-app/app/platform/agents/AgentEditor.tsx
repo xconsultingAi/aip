@@ -261,7 +261,7 @@ const KBTabContent = ({
   };
 
   const handleCreateClick = () => {
-    router.push("/platform/knowledgebase");
+    router.push("/platform/knowledgebase/CreateKnowledgebase");
   };
 
   return (
@@ -295,7 +295,7 @@ const KBTabContent = ({
                 onChange={() => toggleSelection(file.id)}
                 className="mr-3"
               />
-              <span className="text-sm text-gray-800">{file.filename}</span>
+              <span className="text-sm text-gray-800">{file.name}</span>
             </div>
           ))}
         </div>

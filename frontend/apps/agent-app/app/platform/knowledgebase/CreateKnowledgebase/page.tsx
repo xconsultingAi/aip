@@ -110,7 +110,7 @@ export default function FileUpload() {
       formData.append("name", customName.trim());
     }
 
-    formData.append("format", selectedFormat);
+    formData.append("kb_format", selectedFormat);
     formData.append("organization_id", organizationId!);
 
     try {
