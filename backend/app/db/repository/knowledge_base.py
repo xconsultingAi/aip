@@ -93,7 +93,6 @@ async def create_url_knowledge(
     db: AsyncSession,
     name: str,
     url: str,
-    url_format: str,
     organization_id: int,
     file_path: str,
     filename: str,
@@ -116,7 +115,6 @@ async def create_url_knowledge(
             chunk_count=chunk_count,
             source_type="url",
             url=url,
-            url_format=url_format,
             crawl_depth=crawl_depth,
             include_links=include_links,
             last_crawled=datetime.now(),
@@ -188,7 +186,7 @@ async def create_youtube_knowledge(
     file_path: str,
     transcript: str,
     filename: str,
-    video_format: str
+    format: Optional[str] = None
 ) -> YouTubeKnowledge:
     try:
         processor = YouTubeProcessor()
@@ -206,7 +204,7 @@ async def create_youtube_knowledge(
             name=name,
             filename=filename,
             content_type="application/pdf",
-            format="pdf",
+            format=format,
             organization_id=organization_id,
             file_size=len(transcript.encode('utf-8')),
             chunk_count=0,
@@ -214,7 +212,6 @@ async def create_youtube_knowledge(
             video_url=video_url,
             video_id=video_id,  # Use extracted video_id
             transcript_length=len(transcript),
-            format_data=video_format,
             file_path=file_path
         )
         
@@ -240,21 +237,20 @@ async def create_text_knowledge(
     file_path: str,
     filename: str,
     content_hash: str,
-    text_format: str
+    format: str
 ) -> TextKnowledge:
     try:
         text_knowledge = TextKnowledge(
             name=name,
             filename=filename,
             content_type="application/pdf",
-            format="pdf",
+            format=format,
             organization_id=organization_id,
             file_size=len(text_content.encode('utf-8')),
             chunk_count=0,  # Will be updated after processing
             source_type="text",
             content_hash=content_hash,
-            file_path=file_path,
-            format_data=text_format
+            file_path=file_path
         )
         
         db.add(text_knowledge)
@@ -287,5 +283,16 @@ async def get_organization_video_knowledge_count(
     result = await db.execute(
         select(func.count(YouTubeKnowledge.id))
         .where(YouTubeKnowledge.organization_id == organization_id)
+    )
+    return result.scalar_one()
+
+#SH: Get agent count for knowledge base
+async def get_agent_count_for_knowledge_base(
+    db: AsyncSession,
+    knowledge_id: int
+) -> int:
+    result = await db.execute(
+        select(func.count(agent_knowledge.c.agent_id))
+        .where(agent_knowledge.c.knowledge_id == knowledge_id)
     )
     return result.scalar_one()

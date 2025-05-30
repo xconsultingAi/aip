@@ -7,9 +7,9 @@ from app.db.database import get_db
 from app.db.models.user import User
 from app.db.models.knowledge_base import KnowledgeBase
 from app.services.knowledge_services import process_file, process_text, process_url, process_youtube
-from app.db.repository.knowledge_base import create_knowledge_entry, get_organization_text_knowledge_count, get_organization_video_knowledge_count
+from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_count_for_knowledge_base, get_organization_text_knowledge_count, get_organization_video_knowledge_count
 from app.dependencies.auth import get_current_user
-from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate, KnowledgeFormatCount, KnowledgeURL, OrganizationKnowledgeCount, TextKnowledgeCount, TextKnowledgeRequest, VideoKnowledgeCount, YouTubeKnowledgeRequest
+from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate,KnowledgeFormatCount, KnowledgeBaseAgentCount, KnowledgeURL, OrganizationKnowledgeCount, TextKnowledgeCount, TextKnowledgeRequest, VideoKnowledgeCount, YouTubeKnowledgeRequest
 from app.core.responses import success_response, error_response
 import os
 import uuid
@@ -281,3 +281,26 @@ async def get_video_knowledge_count(
     except Exception as e:
         logger.error(f"Error getting video knowledge count: {str(e)}")
         return error_response("Could not retrieve video knowledge count", 500)
+    
+    #SH: Get agent count for knowledge base
+@router.get("/agent_count", response_model=KnowledgeBaseAgentCount)
+async def get_agent_count(
+        knowledge_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+    ):
+        if not current_user.organization_id:
+            return error_response("User must belong to an organization", 400)
+        
+        try:
+            count = await get_agent_count_for_knowledge_base(db, knowledge_id)
+            return success_response(
+                "Agent count retrieved",
+                KnowledgeBaseAgentCount(
+                    knowledge_id=knowledge_id,
+                    agent_count=count
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error getting agent count: {str(e)}")
+            return error_response("Could not retrieve agent count", 500)
