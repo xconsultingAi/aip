@@ -88,6 +88,9 @@ export default function FileUpload() {
       return;
     }
 
+    formData.append("kb_format", selectedFormat);
+    formData.append("organization_id", organizationId!);
+        
     setLoading(true);
     setMessage("");
 
