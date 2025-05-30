@@ -37,7 +37,6 @@ class URLKnowledge(KnowledgeBase):
     __mapper_args__ = {'polymorphic_identity': 'url_knowledge'}
     id = Column(Integer, ForeignKey('knowledge_bases.id'), primary_key=True) 
     url = Column(String(2048), nullable=False, unique=True)
-    url_format = Column(String(20), nullable=False)
     file_path = Column(String(512), nullable=False)
     domain_name = Column(String(256), nullable=False)
     crawl_depth = Column(Integer, default=1, nullable=False)
@@ -55,7 +54,6 @@ class YouTubeKnowledge(KnowledgeBase):
     id = Column(Integer, ForeignKey('knowledge_bases.id'), primary_key=True)
     video_id = Column(String(20), nullable=False, unique=True)
     video_url = Column(String(512), nullable=False)
-    format_data = Column(String(50), nullable=False)
     transcript_length = Column(Integer, nullable=False)
     file_path = Column(String(512), nullable=False)
     
@@ -68,7 +66,6 @@ class TextKnowledge(KnowledgeBase):
     __tablename__ = "text_knowledge"
     __mapper_args__ = {'polymorphic_identity': 'text_knowledge'}
     id = Column(Integer, ForeignKey('knowledge_bases.id'), primary_key=True)
-    format_data = Column(String(50), nullable=False)
     content_hash = Column(String(64), nullable=False, unique=True)  # SHA-256 hash
     file_path = Column(String(512), nullable=False)
     

@@ -1,6 +1,6 @@
-from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
+from youtube_transcript_api import YouTubeTranscriptApi # type: ignore
 from pytube import YouTube
-from pytube.exceptions import PytubeError, VideoUnavailable
+from pytube.exceptions import VideoUnavailable
 from urllib.parse import urlparse, parse_qs
 import re
 import logging
