@@ -1,183 +1,178 @@
-"use client";
-import { useState, useEffect } from "react";
-import { useUser, useAuth } from '@clerk/nextjs';
+'use client';
 
-interface KnowledgeFile {
-  id: string;
-  name: string;
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
+
+interface StatItem {
+  format: string;
+  count: number;
 }
 
-export default function FileUpload() {
-  const { user } = useUser();
+const KnowledgeBasePage = () => {
+  const [knowledgeBases, setKnowledgeBases] = useState<any[]>([]);
+  const [agentCounts, setAgentCounts] = useState<{ [key: string]: number }>({});
+  const [stats, setStats] = useState<StatItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
   const { getToken } = useAuth();
-  const [file, setFile] = useState<File | null>(null);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<KnowledgeFile[]>([]);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
 
-  // Ensure client-side rendering
   useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  // Initialize and fetch existing files
-  useEffect(() => {
-    const initialize = async () => {
-      if (!user) return;
-
+    const fetchData = async () => {
       try {
         const token = await getToken();
 
-        // Fetch organization ID
-        const orgRes = await fetch(`http://127.0.0.1:8000/api/users/${user.id}`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` }
+        // Fetch all data in parallel
+        const [kbRes, statsRes] = await Promise.all([
+          fetch('http://127.0.0.1:8000/api/org_knowledge_base', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch('http://127.0.0.1:8000/api/format_count', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        // Process knowledge bases
+        const kbJson = await kbRes.json();
+        const kbList = Array.isArray(kbJson.data)
+          ? kbJson.data
+          : kbJson.data?.knowledge_bases || [];
+        setKnowledgeBases(kbList);
+
+        // Process stats - assuming API returns array of { format, count }
+        const statsJson = await statsRes.json();
+        setStats(statsJson.data || []);
+
+        // Fetch agent counts for each KB
+        const countPromises = kbList.map(async (kb: any) => {
+          try {
+            const res = await fetch(
+              `http://127.0.0.1:8000/api/knowledge_base/${kb.id}/agent_count`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const data = await res.json();
+            return { kbId: kb.id, count: data.data.agent_count ?? 0 };
+          } catch (err) {
+            console.error(`Error fetching count for KB ${kb.id}`, err);
+            return { kbId: kb.id, count: 0 };
+          }
         });
 
-        const orgData = await orgRes.json();
-        setOrganizationId(orgData?.data.organization_id || null);
-
-        // Fetch knowledge base files
-        const filesRes = await fetch(`http://127.0.0.1:8000/api/org_knowledge_base`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}` }
+        const counts = await Promise.all(countPromises);
+        const countMap: { [key: string]: number } = {};
+        counts.forEach((item) => {
+          countMap[item.kbId] = item.count;
         });
+        setAgentCounts(countMap);
 
-        const filesData = await filesRes.json();
-
-        if (filesData.success && Array.isArray(filesData.data)) {
-          const parsedFiles = filesData.data.slice(0, 5).map(file => ({
-            id: file.id || file.filename || file.name,
-            name: file.filename || file.name || "Unnamed file"
-          }));
-          console.log("Loaded file IDs:", parsedFiles.map(f => f.id));
-          setUploadedFiles(parsedFiles);
-        }
       } catch (error) {
-        setMessage("Failed to load files");
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    initialize();
-  }, [user, getToken]);
+    fetchData();
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-
-    const selectedFile = e.target.files[0];
-    const allowedTypes = ["application/pdf", "text/plain"];
-    const maxSize = 5 * 1024 * 1024; // 5MB
-
-    if (!allowedTypes.includes(selectedFile.type)) {
-      setMessage("Only PDF and TXT files allowed");
-      return;
-    }
-
-    if (selectedFile.size > maxSize) {
-      setMessage("File must be smaller than 5MB");
-      return;
-    }
-
-    setFile(selectedFile);
-    setMessage("");
+  const handleCreateClick = () => {
+    router.push('/platform/knowledgebase/CreateKnowledgebase');
   };
 
-  const handleUpload = async () => {
-    if (!file || !organizationId) {
-      setMessage("Please select a file");
-      return;
-    }
-
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const token = await getToken();
-      const response = await fetch('http://127.0.0.1:8000/api/upload_knowledge_base', {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        const newFile = {
-          id: data.id || file.name,
-          name: data.filename || file.name
-        };
-
-        setUploadedFiles(prev => [
-          newFile,
-          ...prev.slice(0, 4) // Keep only 5 most recent files
-        ]);
-
-        setMessage("Upload successful!");
-        setFile(null);
-
-        // Clear file input
-        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-        if (fileInput) fileInput.value = "";
-      } else {
-        setMessage(data.error || "Upload failed");
-      }
-    } catch (error) {
-      setMessage("Upload error");
-    } finally {
-      setLoading(false);
-    }
+  // Transform stats array to the format needed for display
+  const getDisplayStats = () => {
+    const displayStats: { [key: string]: number } = {};
+    stats.forEach((stat) => {
+      displayStats[stat.format] = stat.count;
+    });
+    return displayStats;
   };
 
   return (
-    <div className="flex justify-center items-center h-screen ">
-      <div className="p-6 border rounded-lg shadow-md bg-white max-w-sm w-full text-center dark:bg-gray-900 shadow-2xl">
-        <h2 className="text-lg font-semibold mb-4">Upload Knowledge File</h2>
-
-        <input 
-          type="file" 
-          accept=".pdf,.txt" 
-          onChange={handleFileChange} 
-          className="mb-4 w-full text-sm border p-2 rounded-lg dark:bg-gray-800"
-        />
-
-        <button 
-          onClick={handleUpload} 
-          disabled={loading || !file}
-          className={`w-full p-2 rounded-lg text-white ${
-            loading || !file ? "bg-gray-400 cursor-not-allowed" 
-            : "bg-green-500 hover:bg-green-600"
-          }`}
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Knowledge Base</h1>
+        <button
+          onClick={handleCreateClick}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center"
         >
-          {loading ? "Uploading..." : "Upload"}
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path
+              fillRule="evenodd"
+              d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          Create New
         </button>
+      </div>
 
-        {message && (
-          <p className={`mt-2 text-sm ${
-            message.includes("success") ? "text-green-500" : "text-red-500"
-          }`}>
-            {message}
-          </p>
-        )}
+      {/* Stats Section */}
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          {stats.map((stat) => (
+            <div key={stat.format} className="bg-white p-4 rounded-lg shadow-2xl">
+              <h2 className="text-gray-500 text-sm">{stat.format.toUpperCase()}</h2>
+              <p className="text-2xl font-bold">{stat.count}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {isClient && uploadedFiles.length > 0 && (
-          <div className="mt-4">
-            <h3 className="font-medium mb-2">Recent Files:</h3>
-            <ul className="space-y-1">
-              {uploadedFiles.map((file, index) => (
-                <li 
-                  key={file.id || file.name || index}
-                  className="p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm"
-                >
-                  {file.name}
-                </li>
-              ))}
-            </ul>
+      {/* Rest of your component remains the same */}
+      <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h2 className="text-lg font-semibold">Latest Knowledge Bases</h2>
+          <div className="flex space-x-2">
+            <button className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200">Filter</button>
+            <button className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200">Sort</button>
           </div>
+        </div>
+
+        {loading ? (
+          <div className="p-6 text-center text-gray-500">Loading...</div>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Format</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agents</th>
+                {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th> */}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {knowledgeBases.map((kb) => (
+                <tr key={kb.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{kb.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs ${
+                        kb.format.includes('pdf') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {kb.format}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(kb.uploaded_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {agentCounts[kb.id] ?? 0}
+                  </td>
+                  {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button className="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                    <button className="text-red-600 hover:text-red-800">Delete</button>
+                  </td> */}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
   );
-}
+};
+
+export default KnowledgeBasePage;
