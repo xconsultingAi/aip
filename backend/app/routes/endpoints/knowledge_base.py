@@ -7,9 +7,9 @@ from app.db.database import get_db
 from app.db.models.user import User
 from app.db.models.knowledge_base import KnowledgeBase
 from app.services.knowledge_services import process_file, process_text, process_url, process_youtube
-from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_count_for_knowledge_base, get_organization_text_knowledge_count, get_organization_video_knowledge_count
+from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_count_for_knowledge_base
 from app.dependencies.auth import get_current_user
-from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate,KnowledgeFormatCount, KnowledgeBaseAgentCount, KnowledgeURL, OrganizationKnowledgeCount, TextKnowledgeCount, TextKnowledgeRequest, VideoKnowledgeCount, YouTubeKnowledgeRequest
+from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate,KnowledgeFormatCount, KnowledgeBaseAgentCount, KnowledgeURL, OrganizationKnowledgeCount, TextKnowledgeRequest, YouTubeKnowledgeRequest
 from app.core.responses import success_response, error_response
 import os
 import uuid
@@ -145,10 +145,7 @@ async def get_organization_knowledge_count(
         return error_response("Could not retrieve knowledge base count", 500)
 
 #SH: Route for Url Scraping
-@router.post("/add_url", responses={
-    400: {"model": error_response, "description": "Invalid URL or scraping failed"},
-    429: {"model": error_response, "description": "Rate limit exceeded"}
-})
+@router.post("/add_url")
 async def add_knowledge_from_url(
     url_data: KnowledgeURL = Body(..., description="URL and scraping options"),
     db: AsyncSession = Depends(get_db),
@@ -156,6 +153,13 @@ async def add_knowledge_from_url(
 ): 
     if not current_user.organization_id:
         raise HTTPException(400, "User organization not set")
+
+    # Additional format validation (though Pydantic already handles this)
+    if url_data.format.lower() not in [fmt.lower() for fmt in settings.ALLOWED_URL_FORMATS]:
+        raise HTTPException(
+            400,
+            detail=f"Invalid format. Allowed formats: {', '.join(settings.ALLOWED_URL_FORMATS)}"
+        )
 
     try:
         logger.info(f"Calling process_url with url_data={url_data}, organization_id={current_user.organization_id}, db={db}")
@@ -170,6 +174,7 @@ async def add_knowledge_from_url(
     except Exception as e:
         logger.exception("URL processing failed")
         raise HTTPException(500, "Internal processing error")
+
 
 #SH: Route for Count of agents against the Knowledge_base
 @router.get("/format_count", response_model=list[KnowledgeFormatCount])
@@ -202,6 +207,13 @@ async def add_youtube_video(
     if not current_user.organization_id:
         return error_response("Organization membership required", 403)
     
+    # Additional format validation
+    if youtube_data.format.lower() not in ["video", "audio"]:
+        raise HTTPException(
+            400,
+            detail="Invalid format. Allowed formats: video, audio"
+        )
+
     try:
         result = await process_youtube(youtube_data, current_user.organization_id, db)
         return success_response(
@@ -215,74 +227,29 @@ async def add_youtube_video(
         return error_response("Internal server error", 500)
 
 #SH: Route for Text
-@router.post("/add_text", responses={
-    400: {"description": "Invalid text content"},
-    409: {"description": "Duplicate text content"}
-})
+@router.post("/add_text")
 async def add_knowledge_from_text(
     text_data: TextKnowledgeRequest = Body(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
-):
+):      
+    #SH: Ensure user belongs to an organization
     if not current_user.organization_id:
         raise HTTPException(400, "User organization not set")
     
+    #SH: Validate format
+    if text_data.format.lower() not in ["text", "article"]:
+        raise HTTPException(400, detail="Invalid format. Allowed formats: text, article")
+
     try:
         result = await process_text(text_data, current_user.organization_id, db)
-        return success_response(
-            "Text content added to knowledge base",
-            result
-        )
+        return success_response("Text content added to knowledge base", result)
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
     except Exception:
         raise HTTPException(500, "Internal processing error")
-    
-#SH: Get text knowledge count
-@router.get("/text_knowledge_count", response_model=TextKnowledgeCount)
-async def get_text_knowledge_count(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if not current_user.organization_id:
-        return error_response("User must belong to an organization", 400)
-    
-    try:
-        count = await get_organization_text_knowledge_count(db, current_user.organization_id)
-        return success_response(
-            "Text knowledge count retrieved",
-            TextKnowledgeCount(
-                organization_id=current_user.organization_id,
-                total_text_knowledge=count
-            )
-        )
-    except Exception as e:
-        logger.error(f"Error getting text knowledge count: {str(e)}")
-        return error_response("Could not retrieve text knowledge count", 500)
 
-#SH: Get video knowledge count  
-@router.get("/video_knowledge_count", response_model=VideoKnowledgeCount)
-async def get_video_knowledge_count(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if not current_user.organization_id:
-        return error_response("User must belong to an organization", 400)
-    
-    try:
-        count = await get_organization_video_knowledge_count(db, current_user.organization_id)
-        return success_response(
-            "Video knowledge count retrieved",
-            VideoKnowledgeCount(
-                organization_id=current_user.organization_id,
-                total_video_knowledge=count
-            )
-        )
-    except Exception as e:
-        logger.error(f"Error getting video knowledge count: {str(e)}")
-        return error_response("Could not retrieve video knowledge count", 500)
-    
-    #SH: Get agent count for knowledge base
+#SH: Get agent count for knowledge base
 @router.get("/agent_count", response_model=KnowledgeBaseAgentCount)
 async def get_agent_count(
         knowledge_id: int,

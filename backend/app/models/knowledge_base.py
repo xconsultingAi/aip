@@ -49,9 +49,9 @@ class KnowledgeLinkRequest(BaseModel):
 class KnowledgeURL(BaseModel):
     name: str = Field(..., description="Knowledge base display name")
     url: HttpUrl = Field(..., example="https://example.com/article")
-    format: str = Field(..., description="Format type (webpage, pdf, html)")
-    depth: int = Field(default=1, ge=1, le=3,description="Automatically set to 1 if not provided")
-    include_links: bool = Field(default=False,description="Defaults to false if not provided")
+    format: str = Field(...,description="Format type (webpage, pdf, html)",pattern=f"^({'|'.join(settings.ALLOWED_URL_FORMATS)})$",examples=settings.ALLOWED_URL_FORMATS)
+    depth: int = Field(default=1, ge=1, le=3, description="Automatically set to 1 if not provided")
+    include_links: bool = Field(default=False, description="Defaults to false if not provided")
 
 #SH: Knowledge format count
 class KnowledgeFormatCount(BaseModel):
@@ -62,14 +62,18 @@ class KnowledgeFormatCount(BaseModel):
 class YouTubeKnowledgeRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     video_url: HttpUrl = Field(..., example="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-    format: str = Field(..., description="Format type (video, audio)")
+    format: str = Field(...,description="Format type (video, audio)",pattern="^(video|audio)$",examples=["video", "audio"])
 
 #SH: Text knowledge request
 class TextKnowledgeRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     text_content: str = Field(..., min_length=50, max_length=settings.MAX_TEXT_LENGTH)
     format: str = Field(..., description="Format type (text, article)")
-    
+
+class TextKnowledgeRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    text_content: str = Field(..., min_length=50, max_length=settings.MAX_TEXT_LENGTH)
+    format: str = Field(..., description="Format type (text, article)", pattern="^(text|article)$", examples=["text", "article"])
     
     @validator("text_content", mode="before")
     @classmethod
@@ -78,14 +82,4 @@ class TextKnowledgeRequest(BaseModel):
             raise ValueError("text_content must be a string")
         return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", v).strip()
 
-#SH: Text knowledge count
-class TextKnowledgeCount(BaseModel):
-    organization_id: int
-    total_text_knowledge: int
-
-#SH: Video knowledge count          
-class VideoKnowledgeCount(BaseModel):
-    organization_id: int
-    total_video_knowledge: int
-    
     model_config = {"from_attributes": True}

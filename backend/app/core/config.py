@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     #SH: For Video and text
     YOUTUBE_PDFS_SUBDIR: str = "youtube_pdfs"
     ALLOWED_YOUTUBE_DOMAINS: List[str] = ["youtube.com", "youtu.be"]
+    ALLOWED_TEXT_FORMATS: List[str] = ["text", "article"]
     TEXT_PDFS_SUBDIR: str = "text_pdfs"
     MAX_TEXT_LENGTH: int = 10_000  # 10k characters 
     ###### END ####

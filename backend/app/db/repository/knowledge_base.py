@@ -99,17 +99,18 @@ async def create_url_knowledge(
     content_type: str,  
     file_size: int, 
     chunk_count: int,
+    format: str,
     crawl_depth: int = 1,
     include_links: bool = False
 ) -> URLKnowledge:
     try:
         domain = urlparse(url).netloc.replace('www.', '')
-        
+        #SH: Create a new URLKnowledge object
         url_knowledge = URLKnowledge(
             name=name,
             filename=filename,
             content_type=content_type,
-            format="pdf",
+            format=format,
             organization_id=organization_id,
             file_size=file_size,
             chunk_count=chunk_count,
@@ -121,7 +122,7 @@ async def create_url_knowledge(
             file_path=file_path,
             domain_name=domain
         )
-        
+        #SH: Add the URLKnowledge object to the database
         db.add(url_knowledge)
         await db.commit()
         await db.refresh(url_knowledge)
@@ -189,10 +190,10 @@ async def create_youtube_knowledge(
     format: Optional[str] = None
 ) -> YouTubeKnowledge:
     try:
+        #SH: Process the youtube video and get the transcript
         processor = YouTubeProcessor()
-        video_id = processor.extract_video_id(video_url)  # Extract video_id here
-        
-        # Check for existing video first
+        video_id = processor.extract_video_id(video_url)
+        #SH: Check for existing video
         existing = await db.execute(
             select(YouTubeKnowledge)
             .where(YouTubeKnowledge.video_id == video_id)
@@ -200,21 +201,24 @@ async def create_youtube_knowledge(
         if existing.scalar_one_or_none():
             raise ValueError(f"YouTube video {video_id} already exists")
 
-        youtube_knowledge = YouTubeKnowledge(
-            name=name,
-            filename=filename,
-            content_type="application/pdf",
-            format=format,
-            organization_id=organization_id,
-            file_size=len(transcript.encode('utf-8')),
-            chunk_count=0,
-            source_type="youtube",
-            video_url=video_url,
-            video_id=video_id,  # Use extracted video_id
-            transcript_length=len(transcript),
-            file_path=file_path
-        )
-        
+        #SH: Explicitly define fields to avoid passing unexpected ones
+        youtube_knowledge_data = {
+            "name": name,
+            "filename": filename,
+            "content_type": "application/pdf",
+            "format": format,
+            "organization_id": organization_id,
+            "file_size": len(transcript.encode('utf-8')),
+            "chunk_count": 0,
+            "source_type": "youtube",
+            "video_url": video_url,
+            "video_id": video_id,
+            "transcript_length": len(transcript),
+            "file_path": file_path
+        }
+        #SH: Create a new YouTubeKnowledge object
+        youtube_knowledge = YouTubeKnowledge(**youtube_knowledge_data)
+        #SH: Add the YouTubeKnowledge object to the database
         db.add(youtube_knowledge)
         await db.commit()
         await db.refresh(youtube_knowledge)
@@ -240,6 +244,7 @@ async def create_text_knowledge(
     format: str
 ) -> TextKnowledge:
     try:
+        #SH: Create a new TextKnowledge object
         text_knowledge = TextKnowledge(
             name=name,
             filename=filename,
@@ -252,7 +257,7 @@ async def create_text_knowledge(
             content_hash=content_hash,
             file_path=file_path
         )
-        
+        #SH: Add the TextKnowledge object to the database
         db.add(text_knowledge)
         await db.commit()
         await db.refresh(text_knowledge)
@@ -264,27 +269,6 @@ async def create_text_knowledge(
             detail=f"Failed to create Text knowledge: {str(e)}"
         )
 
-#SH: Get organization text knowledge count
-async def get_organization_text_knowledge_count(
-    db: AsyncSession, 
-    organization_id: int
-) -> int:
-    result = await db.execute(
-        select(func.count(TextKnowledge.id))
-        .where(TextKnowledge.organization_id == organization_id)
-    )
-    return result.scalar_one()
-
-#SH: Get organization video knowledge count 
-async def get_organization_video_knowledge_count(
-    db: AsyncSession, 
-    organization_id: int
-) -> int:
-    result = await db.execute(
-        select(func.count(YouTubeKnowledge.id))
-        .where(YouTubeKnowledge.organization_id == organization_id)
-    )
-    return result.scalar_one()
 
 #SH: Get agent count for knowledge base
 async def get_agent_count_for_knowledge_base(

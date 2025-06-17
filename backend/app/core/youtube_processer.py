@@ -1,17 +1,20 @@
-from youtube_transcript_api import YouTubeTranscriptApi # type: ignore
-from pytube import YouTube
-from pytube.exceptions import VideoUnavailable
-from urllib.parse import urlparse, parse_qs
+from youtube_transcript_api import YouTubeTranscriptApi
+import yt_dlp
 import re
 import logging
-from typing import Optional, Dict
+from faster_whisper import WhisperModel
+from urllib.parse import urlparse, parse_qs
+from typing import Optional, Dict, Tuple
+import tempfile
+import os
 
 logger = logging.getLogger(__name__)
 
+#SH: Process the youtube video and get the transcript   
 class YouTubeProcessor:
     @staticmethod
     def validate_youtube_url(url: str) -> None:
-        """More permissive YouTube URL validation"""
+        #SH: Validate the youtube url
         patterns = [
             r'^(https?://)?(www\.)?youtube\.com/watch\?v=[\w-]{11}',
             r'^(https?://)?youtu\.be/[\w-]{11}',
@@ -20,6 +23,7 @@ class YouTubeProcessor:
             r'^(https?://)?(www\.)?youtube\.com/live/[\w-]{11}',
             r'^(https?://)?(www\.)?youtube\.com/v/[\w-]{11}'
         ]
+        #SH: Check if the url is valid
         if not any(re.search(pattern, url) for pattern in patterns):
             raise ValueError(
                 "Please provide a valid YouTube URL in one of these formats:\n"
@@ -29,9 +33,9 @@ class YouTubeProcessor:
                 "- https://www.youtube.com/shorts/VIDEO_ID"
             )
 
+    #SH: Extract the video id from the url
     @staticmethod
     def extract_video_id(url: str) -> str:
-        """More flexible video ID extraction"""
         try:
             YouTubeProcessor.validate_youtube_url(url)
 
@@ -48,7 +52,6 @@ class YouTubeProcessor:
             if "embed/" in url:
                 return url.split("embed/")[1].split("?")[0]
 
-            # Fallback
             patterns = [
                 r'(?:v=|\/)([\w-]{11})',
                 r'\.be\/([\w-]{11})',
@@ -66,55 +69,175 @@ class YouTubeProcessor:
             logger.error(f"URL validation failed: {str(e)}")
             raise ValueError("Invalid YouTube URL. Please check the URL format.")
 
+    #SH: Download the audio from the youtube video
     @staticmethod
-    def get_transcript(video_id: str) -> Optional[str]:
-        """Fetch transcript with fallback logic"""
+    def _download_audio(video_id: str) -> str:
+        # Step 1: Check video duration first
+        ydl_opts_info = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
+                info = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
+                if info.get('duration', 0) > 600:  # 10 minutes
+                    raise ValueError("Video too long (>10 min)")
+        except Exception as e:
+            logger.error(f"Failed to fetch video info: {str(e)}")
+            raise ValueError("Could not fetch video information")
+
+        # Step 2: Proceed to audio download
+        ydl_opts_download = {
+            'format': 'bestaudio[abr<=64]',  # Limit to 64 kbps
+            'outtmpl': os.path.join(tempfile.gettempdir(), f'%(id)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '64',  # Lower quality
+            }]
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
+                info = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=True)
+                return ydl.prepare_filename(info).replace('.webm', '.mp3').replace('.m4a', '.mp3')
+        except Exception as e:
+            logger.error(f"Failed to download audio: {str(e)}")
+            raise ValueError("Could not download video audio")
+
+    #SH: Transcribe the audio
+    @staticmethod
+    def _transcribe_audio(audio_path: str) -> str:
+        try:
+            model = WhisperModel("tiny", device="cpu", compute_type="int8")
+            segments, _ = model.transcribe(audio_path)
+            transcript = " ".join([segment.text for segment in segments])
+            return transcript
+        except Exception as e:
+            logger.error(f"Transcription failed: {str(e)}")
+            raise ValueError("Could not transcribe audio")
+        finally:
+            try:
+                os.remove(audio_path)
+            except:
+                pass
+
+    #SH: Get the transcript
+    @staticmethod
+    def get_transcript(video_id: str, video_url: str = None) -> Tuple[Optional[str], Optional[str]]:
+        #SH: Fetch transcript with fallback to speech-to-text
         try:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
 
-            # Try English transcripts
             for transcript in transcript_list:
                 if transcript.language_code == 'en':
                     try:
-                        return " ".join([t.text for t in transcript.fetch()])
-                    except Exception:
+                        return (" ".join([t.text for t in transcript.fetch()]), None)
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch English transcript: {str(e)}")
                         continue
 
-            # Fallback: try any available transcript
             for transcript in transcript_list:
                 try:
-                    return " ".join([t.text for t in transcript.fetch()])
-                except Exception:
+                    return (" ".join([t.text for t in transcript.fetch()]), None)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch transcript: {str(e)}")
                     continue
 
-            return None
+            if not video_url:
+                return None, "No transcript and no video URL provided for fallback"
+
+            logger.info(f"No transcript available. Attempting speech-to-text for {video_id}")
+            audio_path = YouTubeProcessor._download_audio(video_id)
+            transcript = YouTubeProcessor._transcribe_audio(audio_path)
+            return transcript, None
 
         except Exception as e:
-            logger.warning(f"Transcript error for {video_id}: {str(e)}")
-            return None
+            error_msg = str(e)
+            if "Subtitles are disabled" in error_msg:
+                if not video_url:
+                    return None, "Subtitles disabled and no video URL for fallback"
+                try:
+                    audio_path = YouTubeProcessor._download_audio(video_id)
+                    transcript = YouTubeProcessor._transcribe_audio(audio_path)
+                    return transcript, None
+                except Exception as se:
+                    return None, f"Failed fallback speech-to-text: {str(se)}"
+            logger.warning(f"Transcript error: {error_msg}")
+            return None, error_msg
 
+    #SH: Get the transcript with fallback
+    @staticmethod
+    def get_transcript_with_fallback(video_id: str) -> Tuple[Optional[str], Optional[str]]:
+        #SH: Try to get transcript, fallback to audio transcription if not available
+        try:
+            transcript, error = YouTubeProcessor.get_transcript(video_id)
+            if transcript:
+                return transcript, None
+
+            logger.info(f"No transcript available, attempting audio transcription for {video_id}")
+            audio_path = YouTubeProcessor._download_audio(video_id)
+            transcript = YouTubeProcessor._transcribe_audio(audio_path)
+
+            if len(transcript.strip()) < 50:
+                return None, "Transcribed content too short (video may have no speech)"
+
+            return transcript, None
+
+        except Exception as e:
+            logger.error(f"Transcript with fallback failed: {str(e)}")
+            return None, str(e)
+
+    #SH: Get the video metadata 
     @staticmethod
     def get_video_metadata(video_url: str) -> Dict[str, str]:
-        """Get metadata with fallback and error handling"""
+        #SH: Get metadata with yt-dlp
         try:
-            yt = YouTube(video_url)
-
-            title = yt.title or "No title available"
-            description = yt.description or "No description available"
-
-            return {
-                'title': title,
-                'description': description,
-                'author': yt.author or "Unknown Author",
-                'length': yt.length,
-                'views': yt.views,
-                'retrieved_successfully': True
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,
+                'extract_flat': True,
             }
 
-        except VideoUnavailable:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+
+                if not info:
+                    return {
+                        'retrieved_successfully': False,
+                        'error': "Could not retrieve video information"
+                    }
+
+                return {
+                    'title': info.get('title', 'No title available'),
+                    'description': info.get('description', 'No description available'),
+                    'author': info.get('uploader', 'Unknown Author'),
+                    'length': info.get('duration', 0),
+                    'views': info.get('view_count', 0),
+                    'retrieved_successfully': True
+                }
+
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e).lower()
+            if 'private' in error_msg:
+                detail = "Video is private"
+            elif 'age restricted' in error_msg:
+                detail = "Age-restricted video"
+            elif 'unavailable' in error_msg:
+                detail = "Video unavailable in your region"
+            elif 'removed' in error_msg or 'terminated' in error_msg:
+                detail = "Video has been removed"
+            else:
+                detail = f"Video metadata error: {str(e)}"
+
             return {
                 'retrieved_successfully': False,
-                'error': "Video is unavailable"
+                'error': detail
             }
         except Exception as e:
             logger.error(f"Metadata error: {str(e)}")
