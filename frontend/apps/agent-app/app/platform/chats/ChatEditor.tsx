@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
+import MessageInput from "./MessageInput";
 
 interface Message {
   id: number;
@@ -27,6 +28,10 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
   onMessageUpdate,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [userChats, setUserChats] = useState<
+    { id: string; title: string; updated_at: string }[]
+  >([]);
+  const [loadingChats, setLoadingChats] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editedContent, setEditedContent] = useState<string>("");
   const [newMessage, setNewMessage] = useState<string>("");
@@ -45,6 +50,15 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
     );
   }, [searchParams, chatHistory, messages]);
 
+  // Clear messages when agent changes but no chat is selected
+  useEffect(() => {
+    if (!chatId) {
+      setMessages([]);
+      onMessageUpdate?.([]);
+    }
+  }, [agent, chatId, onMessageUpdate]);
+
+  // Fetch chat history when chatId changes
   useEffect(() => {
     if (chatHistory.length > 0) {
       setMessages(chatHistory);
@@ -53,15 +67,16 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
 
     const fetchHistory = async () => {
       if (!chatId) return;
-
       try {
         const token = await getToken();
-        const response = await fetch(`http://127.0.0.1:8000/api/conversations/${chatId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
+        const response = await fetch(
+          `http://127.0.0.1:8000/api/conversations/${chatId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
         if (!response.ok) throw new Error("Failed to fetch chat history");
 
         const data = await response.json();
@@ -84,6 +99,40 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
     fetchHistory();
   }, [chatId, chatHistory, getToken, onMessageUpdate]);
 
+  // Fetch chats list (either all or agent-specific)
+  useEffect(() => {
+    const fetchChats = async () => {
+      setLoadingChats(true);
+      try {
+        const token = await getToken();
+        let url = "http://127.0.0.1:8000/api/user/conversations";
+        
+        if (agent?.id) {
+          url = `http://127.0.0.1:8000/api/conversations?agent_id=${agent.id}`;
+        }
+
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        if (!response.ok) throw new Error("Failed to fetch conversations");
+        const data = await response.json();
+        setUserChats(data || []);
+      } catch (error) {
+        console.error("Error fetching chats:", error);
+      } finally {
+        setLoadingChats(false);
+      }
+    };
+
+    if (!chatId) {
+      fetchChats();
+    }
+  }, [chatId, getToken, agent?.id]);
+
+  // WebSocket connection for real-time updates
   useEffect(() => {
     if (!chatId) return;
 
@@ -94,14 +143,11 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
         const socket = new WebSocket(wsUrl);
         ws.current = socket;
 
-        socket.onopen = () => {
-          console.log("✅ WebSocket connected");
-        };
+        socket.onopen = () => console.log("✅ WebSocket connected");
 
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log("WS message received:", data);
 
             if (data.type === "history" && Array.isArray(data.content)) {
               const historyMessages = data.content.map((msg: any) => ({
@@ -126,34 +172,27 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
                 onMessageUpdate?.(updated);
                 return updated;
               });
-            } else {
-              console.warn("Unexpected WS message format:", data);
             }
           } catch (err) {
             console.error("Failed to parse WS message:", err, event.data);
           }
         };
 
-        socket.onerror = (error) => {
-          console.error("WebSocket error:", error);
-        };
-
-        socket.onclose = (event) => {
-          console.log("❌ WebSocket closed:", event.reason);
-        };
+        socket.onerror = (error) => console.error("WebSocket error:", error);
+        socket.onclose = (event) => console.log("❌ WebSocket closed:", event.reason);
       } catch (err) {
         console.error("WebSocket setup failed:", err);
       }
     };
 
     connectWebSocket();
-
     return () => {
       ws.current?.close();
       ws.current = null;
     };
   }, [chatId, getToken, onMessageUpdate]);
 
+  // Auto-scroll to bottom of messages
   useEffect(() => {
     if (messageContainerRef.current) {
       messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
@@ -161,13 +200,7 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
   }, [messages]);
 
   const sendMessage = () => {
-    if (
-      !newMessage.trim() ||
-      !ws.current ||
-      ws.current.readyState !== WebSocket.OPEN ||
-      !chatId
-    ) {
-      console.warn("❌ Cannot send message.");
+    if (!newMessage.trim() || !ws.current || ws.current.readyState !== WebSocket.OPEN || !chatId) {
       return;
     }
 
@@ -227,14 +260,17 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
     if (!editedContent.trim() || !chatId) return;
     try {
       const token = await getToken();
-      const res = await fetch(`http://127.0.0.1:8000/api/messages/${messageId}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content: editedContent, chat_id: chatId }),
-      });
+      const res = await fetch(
+        `http://127.0.0.1:8000/api/messages/${messageId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ content: editedContent, chat_id: chatId }),
+        }
+      );
       if (!res.ok) throw new Error("Edit failed");
       const updated = messages.map((msg) =>
         msg.id === messageId ? { ...msg, content: editedContent } : msg
@@ -247,18 +283,71 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
     }
   };
 
+  const handleChatSelect = (chatId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("chat_id", chatId);
+    window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  const handleBackClick = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("chat_id");
+    window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <div className="w-full h-full flex flex-col bg-gray-200 dark:bg-gray-800 p-4 rounded-lg">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-        {agent?.name || "Chat"} History
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+          {agent?.name || "Chat"} History
+        </h2>
+        {chatId && (
+          <div className="flex justify-between items-center p-4">
+            <button
+              onClick={handleBackClick}
+              className="px-4 py-2 text-white bg-gray-600 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              &larr; Back
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col flex-1 overflow-hidden">
         <div
           className="h-[500px] overflow-y-auto space-y-4 pr-2 mb-4"
           ref={messageContainerRef}
         >
-          {messages.length === 0 ? (
+          {!chatId ? (
+            loadingChats ? (
+              <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                Loading chats...
+              </div>
+            ) : userChats.length > 0 ? (
+              <div className="space-y-2">
+                {userChats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    onClick={() => handleChatSelect(chat.id)}
+                    className="p-3 bg-gray-100 dark:bg-gray-700 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
+                  >
+                    <div className="font-semibold">{chat.title || "Untitled Chat"}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      Last updated: {new Date(chat.updated_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                {agent
+                  ? "No chats available for this agent. Start a new conversation!"
+                  : "No chats available. Start a new conversation!"}
+              </div>
+            )
+          ) : messages.length === 0 ? (
             <div className="text-center text-gray-500 dark:text-gray-400 py-8">
               No messages yet. Start a conversation!
             </div>
@@ -301,7 +390,7 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
                     <p className="whitespace-pre-wrap">{message.content}</p>
                     <div className="flex justify-between mt-2 text-xs text-gray-600 dark:text-gray-400">
                       <span>{new Date(message.timestamp).toLocaleString()}</span>
-                      <div className="space-x-2">
+                      {/* <div className="space-x-2">
                         {message.sender === "user" && (
                           <>
                             <button
@@ -321,7 +410,7 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
                             </button>
                           </>
                         )}
-                      </div>
+                      </div> */}
                     </div>
                   </>
                 )}
@@ -330,38 +419,12 @@ const ChatEditor: React.FC<ChatEditorProps> = ({
           )}
         </div>
 
-        {/* Only show input field if chatId is available */}
-        {chatId ? (
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              className="flex-grow rounded p-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              placeholder="Type your message..."
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!newMessage.trim()}
-              className={`px-4 py-2 rounded text-white ${
-                newMessage.trim()
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-gray-400 cursor-not-allowed"
-              }`}
-            >
-              Send
-            </button>
-          </div>
-        ) : (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-4">
-           
-          </div>
+        {chatId && (
+          <MessageInput
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            sendMessage={sendMessage}
+          />
         )}
       </div>
     </div>

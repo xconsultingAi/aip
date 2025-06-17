@@ -47,7 +47,7 @@ const KnowledgeBasePage = () => {
         const countPromises = kbList.map(async (kb: any) => {
           try {
             const res = await fetch(
-              `http://127.0.0.1:8000/api/knowledge_base/${kb.id}/agent_count`,
+              `http://127.0.0.1:8000/api/agent_count?knowledge_id=${kb.id}`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
             const data = await res.json();
