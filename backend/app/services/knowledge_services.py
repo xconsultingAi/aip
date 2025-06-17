@@ -9,7 +9,6 @@ from langchain_community.document_loaders import(
     UnstructuredExcelLoader  # XLS/XLSX
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import select
 from app.core.config import settings
@@ -25,10 +24,9 @@ from app.db.repository.knowledge_base import create_text_knowledge, create_url_k
 import os
 from app.core.youtube_processer import YouTubeProcessor
 import hashlib
-
 from app.db.models.knowledge_base import TextKnowledge, YouTubeKnowledge
 
-logger= logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 #SH: Initialize OpenAI Embeddings using API key
 embeddings = OpenAIEmbeddings(openai_api_key=settings.OPENAI_API_KEY)
@@ -66,6 +64,7 @@ def get_safe_loader(file_path: str, content_type: str):
         encoding = detect_file_encoding(file_path) or 'utf-8'
 
     try:
+        #SH: Load the file based on its content type
         if content_type == "application/pdf":
             loader = PyPDFLoader(file_path)
         elif content_type == "text/plain":
@@ -88,6 +87,7 @@ def get_safe_loader(file_path: str, content_type: str):
         fallback_encodings = ['utf-8-sig', 'latin-1', 'windows-1252']
         for enc in fallback_encodings:
             try:
+                #SH: Try with fallback encoding
                 if content_type == "text/plain":
                     return TextLoader(file_path, encoding=enc)
                 elif content_type == "text/html":
@@ -95,6 +95,7 @@ def get_safe_loader(file_path: str, content_type: str):
                 elif content_type == "text/csv":
                     return CSVLoader(file_path, encoding=enc)
             except UnicodeDecodeError:
+                #SH: Continue with next encoding if current one fails
                 continue
         raise ValueError(f"Could not decode file with any supported encoding")
 
@@ -122,6 +123,7 @@ def process_file(file_path: str, content_type: str, organization_id: int) -> int
         #SH: Raise a custom exception if anything fails
         logger.error(f"File processing error for {file_path}: {str(e)}", exc_info=True)
         raise openai_exception(f"Could not process file: {str(e)}")
+
 #SH: For Url Scraping
 async def process_url(url_data: KnowledgeURL, organization_id: int, db: AsyncSession):
     try:
@@ -130,7 +132,7 @@ async def process_url(url_data: KnowledgeURL, organization_id: int, db: AsyncSes
             raise ValueError("URL must start with http:// or https://")
 
         #SH: Case-insensitive format validation
-        if url_data.url_format.lower() not in [fmt.lower() for fmt in settings.ALLOWED_URL_FORMATS]:
+        if url_data.format.lower() not in [fmt.lower() for fmt in settings.ALLOWED_URL_FORMATS]:
             raise ValueError(f"Invalid URL format. Allowed: {settings.ALLOWED_URL_FORMATS}")
 
         processor = URLProcessor()
@@ -147,27 +149,26 @@ async def process_url(url_data: KnowledgeURL, organization_id: int, db: AsyncSes
         vector_store = get_organization_vector_store(organization_id)
         await vector_store.aadd_texts(chunks)
 
-        #SH: Save PDF and get relative path
+        #SH: Save PDF in domain-specific subfolder
         pdf_relative_path = save_content_as_pdf(
             content=content,
             source_type="url",
             identifier=str(url_data.url),
-            base_dir=os.path.join(settings.KNOWLEDGE_BASE_DIR, settings.SCRAPED_PDFS_SUBDIR)
+            base_dir=settings.KNOWLEDGE_BASE_DIR
         )
+
         #SH: Get full path to calculate file size
-        full_pdf_path = os.path.join(
-            settings.KNOWLEDGE_BASE_DIR, 
-            settings.SCRAPED_PDFS_SUBDIR, 
-            pdf_relative_path
-        )
+        full_pdf_path = os.path.join(settings.KNOWLEDGE_BASE_DIR, pdf_relative_path)
+        if not os.path.exists(full_pdf_path):
+            raise ValueError("Failed to generate PDF")
 
         #SH: Calculate required fields
         filename = os.path.basename(pdf_relative_path)
         content_type = "application/pdf"
         file_size = os.path.getsize(full_pdf_path)
 
-        #SH: Store metadata in database with all required fields
-        await create_url_knowledge(
+        #SH: Store metadata in database
+        url_knowledge = await create_url_knowledge(
             db=db,
             name=url_data.name,
             url=str(url_data.url),
@@ -179,7 +180,7 @@ async def process_url(url_data: KnowledgeURL, organization_id: int, db: AsyncSes
             chunk_count=chunk_count,
             crawl_depth=url_data.depth,
             include_links=url_data.include_links,
-            url_format=url_data.url_format
+            format=url_data.format
         )
 
         return {
@@ -192,52 +193,60 @@ async def process_url(url_data: KnowledgeURL, organization_id: int, db: AsyncSes
         logger.error(f"URL Processing Error: {str(e)}", exc_info=True)
         raise
 
-#SH: Process YouTube
+# SH: Process YouTube
 async def process_youtube(
-    youtube_data: YouTubeKnowledgeRequest, 
+    youtube_data: YouTubeKnowledgeRequest,
     organization_id: int,
     db: AsyncSession
 ):
-    try:
-        processor = YouTubeProcessor()
-        video_id = processor.extract_video_id(str(youtube_data.video_url))
+    processor = YouTubeProcessor()
+    video_id = processor.extract_video_id(str(youtube_data.video_url))
+    logger.info(f"Processing YouTube video {video_id}: {youtube_data.video_url}")
 
-        # Check for existing video before processing
+    try:
+        #SH: Check for existing video
         existing = await db.execute(
             select(YouTubeKnowledge).where(YouTubeKnowledge.video_id == video_id)
         )
         if existing.scalar_one_or_none():
-            raise ValueError(f"This YouTube video (ID: {video_id}) is already in your knowledge base")
+            raise ValueError(f"YouTube video {video_id} already exists")
 
-        # Try to get transcript first
-        transcript = processor.get_transcript(video_id)
-        content_source = "transcript"
+        #SH: Use fallback method for transcript (text + speech-to-text)
+        transcript, error = processor.get_transcript_with_fallback(video_id)
+        logger.info(f"Transcript result for {video_id}: length={len(transcript) if transcript else 0}, error={error}")
 
-        # If no transcript, use metadata
+        #SH: Get metadata early so it can be reused in both success and fail cases
+        metadata = processor.get_video_metadata(str(youtube_data.video_url))
+        logger.info(f"Metadata for {video_id}: {metadata}")
+
         if not transcript:
-            metadata = processor.get_video_metadata(str(youtube_data.video_url))
-
             if not metadata.get('retrieved_successfully', True):
                 raise ValueError(
-                    "Could not access video metadata. The video may be private, age-restricted, "
-                    "or unavailable in your region. Please verify the video is publicly accessible."
+                    f"Could not access video metadata: {metadata.get('error', 'Unknown error')}. "
+                    "The video may be private, age-restricted, or unavailable."
                 )
+            return {
+                "status": "skipped",
+                "message": f"Cannot process video '{metadata.get('title', '')}': {error}",
+                "reason": "no_transcript",
+                "video_id": video_id,
+                "title": metadata.get('title', ''),
+                "url": youtube_data.video_url
+            }
 
-            transcript = f"Title: {metadata['title']}\n\nDescription: {metadata['description']}"
-            content_source = "metadata"
+        #SH: Validate transcript length
+        if len(transcript.strip()) < 100:
+            raise ValueError(
+                "Transcript is too short (less than 100 characters). "
+                "Please ensure the video has sufficient spoken content."
+            )
 
-            if len(transcript) < 100:
-                raise ValueError(
-                    "Insufficient content available. Video might have minimal metadata. "
-                    "Please try a different video with enabled subtitles."
-                )
-        else:
-            metadata = processor.get_video_metadata(str(youtube_data.video_url))  # Still get title if transcript is available
+        if not metadata.get('retrieved_successfully', True):
+            raise ValueError(
+                f"Could not access video metadata: {metadata.get('error', 'Unknown error')}"
+            )
 
-        if not transcript.strip():
-            raise ValueError("No content available from this video")
-
-        # Save transcript/metadata to PDF
+        #SH: Save transcript to PDF
         pdf_relative_path = save_content_as_pdf(
             content=transcript,
             source_type="youtube",
@@ -245,43 +254,48 @@ async def process_youtube(
             base_dir=settings.KNOWLEDGE_BASE_DIR
         )
 
-        # Chunk text and store in vector DB
+        #SH: Chunk text and store in vector DB
         chunks = text_splitter.split_text(transcript)
         chunk_count = len(chunks)
+        logger.info(f"Created {chunk_count} chunks for video {video_id}")
 
         if chunk_count > 0:
             vector_store = get_organization_vector_store(organization_id)
             await vector_store.aadd_texts(chunks)
 
-        # Save to database with correct video_url
+        #SH: Save to database
         filename = os.path.basename(pdf_relative_path)
         await create_youtube_knowledge(
             db=db,
             name=youtube_data.name or metadata.get('title', 'YouTube Video'),
-            video_url=str(youtube_data.video_url),  # Correct: pass video_url
+            video_url=str(youtube_data.video_url),
             organization_id=organization_id,
             file_path=pdf_relative_path,
             transcript=transcript,
             filename=filename,
-            video_format=youtube_data.video_format
+            format=youtube_data.format
         )
 
         return {
-            "message": "YouTube video added successfully",
+            "status": "success",
+            "message": "YouTube video transcript added successfully",
             "video_id": video_id,
             "chunk_count": chunk_count,
             "pdf_path": pdf_relative_path,
-            "content_source": content_source
+            "content_source": "transcript",
+            "title": metadata.get('title', ''),
+            "url": youtube_data.video_url
         }
-
+    #SH: Handle exceptions
     except ValueError as ve:
+        logger.error(f"ValueError processing YouTube video {video_id}: {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"YouTube Processing Error: {str(e)}", exc_info=True)
+        logger.error(f"YouTube Processing Error for {video_id}: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail="Failed to process YouTube video. Please try again later."
         )
 
@@ -327,7 +341,7 @@ async def process_text(
             file_path=pdf_relative_path,
             filename=filename,
             content_hash=content_hash,
-            text_format=text_data.text_format 
+            format=text_data.format 
         )
         
         return {
