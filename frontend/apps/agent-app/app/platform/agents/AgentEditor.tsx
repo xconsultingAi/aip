@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { Agent } from "../../types/agent";
 import { useAuth } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
-const tabs = ["Model", "Knowledgebase", "Advanced", "Analysis"];
+import { useRouter } from "next/navigation";
+
+const tabs = ["Model", "Knowledgebase", "Widget", "Analysis"];
 
 interface AgentEditorProps {
   agent: Agent | null;
@@ -14,9 +16,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
   const [activeTab, setActiveTab] = useState("Model");
   const [agentData, setAgentData] = useState<Agent | null>(agent);
   const { getToken } = useAuth();
-  
+  const router = useRouter();
 
-  //HZ: Model Tab State
+  // Model Tab State
   const [modelConfig, setModelConfig] = useState({
     firstMessage: "",
     provider: "OpenAI",
@@ -25,46 +27,57 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
     temperature: 0.7,
   });
 
-  //HZ: Knowledge Base Tab State
+  // Knowledge Base Tab State
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<number[]>([]);
 
-  //HZ: Update states when agent changes
+  // Widget Tab State
+  const [color, setColor] = useState("#22c55e");
+  const [greeting, setGreeting] = useState("Hello! How can I help?");
+  const [agentName, setAgentName] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
+
+  // Initialize all states when agent changes
   useEffect(() => {
     setAgentData(agent);
   
     if (agent) {
-      //HZ: Set model config
-      setModelConfig((prev) => ({
-        ...prev,
+      // Model config
+      setModelConfig({
         firstMessage: agent.description || "",
+        provider: "OpenAI",
         model: agent.config?.model_name || "gpt-3.5-turbo",
-        temperature: agent.config?.temperature ?? 0.7,
         maxLength: agent.config?.max_length ?? 100,
-        
-      }));
-  
-      //HZ: Set selected KB IDs from agent.config
-      if (agent.config?.knowledge_base_ids && Array.isArray(agent.config.knowledge_base_ids)) {
-        setSelectedKnowledgeBaseIds(agent.config.knowledge_base_ids);
-      } else {
-        setSelectedKnowledgeBaseIds([]);
-      }
+        temperature: agent.config?.temperature ?? 0.7,
+      });
+      
+      // Knowledge base
+      setSelectedKnowledgeBaseIds(agent.config?.knowledge_base_ids || []);
+      
+      // Widget settings
+      setColor(agent.theme_color || "#22c55e");
+      setGreeting(agent.greeting_message || "Hello! How can I help?");
+      setAgentName(agent.name || "");
+      setIsPublic(agent.is_public ?? true);
     }
   }, [agent]);
-  
-  
 
   const handlePublish = async () => {
     if (!agentData) return;
-  
+
     const payload = {
       model_name: modelConfig.model,
       temperature: modelConfig.temperature,
       max_length: modelConfig.maxLength,
       system_prompt: modelConfig.firstMessage,
       knowledge_base_ids: selectedKnowledgeBaseIds,
+      // Widget settings
+      greeting_message: greeting,
+      theme_color: color,
+      is_public: isPublic,
+      name: agentName,
+      embed_code: `<script src="https://localhost:3000/embed-loader.js" data-agent="${agentData?.id}" data-color="${color}" data-greeting="${greeting}" data-name="${agentName}"></script>`
     };
-  
+
     try {
       const token = await getToken();
       const response = await fetch(`http://127.0.0.1:8000/api/agents/${agentData?.id}/config`, {
@@ -79,8 +92,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
       if (!response.ok) {
         throw new Error("Failed to save agent configuration");
       }
-  
-      alert("Configuration saved successfully!");
+
+      alert("All settings saved successfully!");
+      window.location.reload();
     } catch (error) {
       console.error("Error saving configuration:", error);
       alert("Error saving configuration.");
@@ -102,11 +116,11 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
           {agentData.name}
         </h2>
         <button onClick={handlePublish} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
-          Publish
+          Save Changes
         </button>
       </div>
 
-      <div className="flex space-x-4 border-b border-gray-300 dark:border-gray-700  mb-4">
+      <div className="flex space-x-4 border-b border-gray-300 dark:border-gray-700 mb-4">
         {tabs.map((tab) => (
           <button
             key={tab}
@@ -123,14 +137,24 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ agent }) => {
       <div className="flex-1 overflow-y-auto p-4 bg-gray-200 dark:bg-gray-800">
         {activeTab === "Model" && <ModelTabContent modelConfig={modelConfig} setModelConfig={setModelConfig} />}
         {activeTab === "Knowledgebase" && <KBTabContent selectedIds={selectedKnowledgeBaseIds} setSelectedIds={setSelectedKnowledgeBaseIds} />}
-        {activeTab === "Advanced" && <AdvancedTabContent agent={agentData} />}
+        {activeTab === "Widget" && (
+          <AdvancedTabContent 
+            agent={agentData}
+            color={color}
+            setColor={setColor}
+            greeting={greeting}
+            setGreeting={setGreeting}
+            agentName={agentName}
+            setAgentName={setAgentName}
+            isPublic={isPublic}
+            setIsPublic={setIsPublic}
+          />
+        )}
         {activeTab === "Analysis" && <AnalysisTabContent />}
       </div>
     </div>
   );
 };
-
-export default AgentEditor;
 
 //HZ: Model Tab Component
 const ModelTabContent = ({ modelConfig, setModelConfig }: { modelConfig: any; setModelConfig: any }) => {
@@ -205,7 +229,7 @@ const KBTabContent = ({
     { id: number; filename: string }[]
   >([]);
   const { getToken } = useAuth();
-
+  const router = useRouter();
   useEffect(() => {
     const fetchKnowledgeBase = async () => {
       try {
@@ -256,40 +280,78 @@ const KBTabContent = ({
     );
   };
 
+  const handleCreateClick = () => {
+    router.push("/platform/knowledgebase/CreateKnowledgebase");
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold">Knowledge Base</h2>
+        <button
+          onClick={handleCreateClick}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          + Create
+        </button>
+      </div>
+
+      {/* File List */}
       {knowledgeBase.length === 0 ? (
         <div className="text-gray-500 text-center">
           No knowledge base available
         </div>
       ) : (
-        knowledgeBase.map((file) => (
-          <button
-            key={file.id}
-            className={`block w-full p-2 text-left rounded ${
-              selectedIds.includes(file.id)
-                ? "bg-green-500 text-white"
-                : "bg-gray-200 text-gray-700"
-            }`}
-            onClick={() => toggleSelection(file.id)}
-          >
-            {file.filename}
-          </button>
-        ))
+        <div className="space-y-2">
+          {knowledgeBase.map((file) => (
+            <div
+              key={file.id}
+              className="flex items-center bg-gray-100 p-2 rounded"
+            >
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(file.id)}
+                onChange={() => toggleSelection(file.id)}
+                className="mr-3"
+              />
+              <span className="text-sm text-gray-800">{file.name}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 };
 
+// Updated Widget Tab Component
+interface AdvancedTabContentProps {
+  agent: Agent;
+  color: string;
+  setColor: React.Dispatch<React.SetStateAction<string>>;
+  greeting: string;
+  setGreeting: React.Dispatch<React.SetStateAction<string>>;
+  agentName: string;
+  setAgentName: React.Dispatch<React.SetStateAction<string>>;
+  isPublic: boolean;
+  setIsPublic: React.Dispatch<React.SetStateAction<boolean>>;
+}
 
-const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
- const [color, setColor] = useState(agent?.theme_color || "#22c55e");
-  const [greeting, setGreeting] = useState(agent?.greeting_message || "Hello! How can I help?");
-  const [agentName, setAgentName] = useState(agent.config?.name || agent.name || "");
-  const [isPublic, setIsPublic] = useState(agent?.is_public ?? true);
+const AdvancedTabContent: React.FC<AdvancedTabContentProps> = ({
+  agent,
+  color,
+  setColor,
+  greeting,
+  setGreeting,
+  agentName,
+  setAgentName,
+  isPublic,
+  setIsPublic,
+}) => {
   const [showWidget, setShowWidget] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const { getToken } = useAuth();
 
   useEffect(() => {
@@ -298,38 +360,42 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
     const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/public/${agent.id}`);
     setSocket(ws);
 
+    ws.onopen = () => {
+      setIsConnected(true);
+      console.log("WebSocket connected");
+    };
+
     ws.onmessage = (event) => {
       const iframe = document.querySelector("iframe");
       try {
         const data = JSON.parse(event.data);
-
-        if (data.type === "error") {
-          console.error("WebSocket error:", data.content);
-          iframe?.contentWindow?.postMessage({ error: data.content }, "*");
-        } else if (data.type === "greeting") {
-          if (data.content) setGreeting(data.content);
-          if (data.color) setColor(data.color);
-        } else if (data.type === "message") {
+        if (data.type === "message") {
           setMessages((prev) => [...prev, data.content]);
-          iframe?.contentWindow?.postMessage({ response: data.content }, "*");
+          iframe?.contentWindow?.postMessage({ 
+            type: "response",
+            content: data.content 
+          }, "*");
         }
       } catch (err) {
         console.error("Invalid JSON from server:", event.data);
       }
     };
 
-    ws.onopen = () => console.log("WebSocket connected");
-    ws.onclose = () => console.log("WebSocket closed");
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    ws.onclose = (event) => {
+      setIsConnected(false);
+      console.log("WebSocket closed:", event.code, event.reason);
+    };
 
     const handleIframeMessage = (event: MessageEvent) => {
-      if (event.data?.message && typeof event.data.message === "string") {
-        const trimmed = event.data.message.trim();
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ content: trimmed }));
-          setMessages((prev) => [...prev, `You: ${trimmed}`]);
-        } else {
-          console.warn("Socket not open, message skipped:", trimmed);
-        }
+      if (event.data?.type === "message" && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: "message",
+          content: event.data.content
+        }));
       }
     };
 
@@ -341,156 +407,105 @@ const AdvancedTabContent = ({ agent }: { agent: Agent }) => {
     };
   }, [agent?.id]);
 
-  const toggleWidget = () => {
-    setShowWidget((prev) => !prev);
-  };
-
-  const sendMessage = (message: string) => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      const trimmed = message.trim();
-      if (trimmed) {
-        socket.send(JSON.stringify({ content: trimmed }));
-        setMessages((prev) => [...prev, `You: ${trimmed}`]);
-      }
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!agent?.id) return;
-
-    try {
-      const token = await getToken();
-      const embedCode = `<script src="https://localhost:3000/embed-loader.js" data-agent="${agent?.id}" data-color="${color}" data-greeting="${greeting}" data-name="${agentName}"></script>`;
-
-      const res = await fetch(`http://127.0.0.1:8000/api/agents/${agent.id}/advance-settings`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          greeting_message: greeting,
-          theme_color: color,
-          is_public: isPublic,
-          embed_code: embedCode,  // Embed code correctly passed
-        }),
-      });
-console.log(res);
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Failed to update settings:", errorText);
-        alert("Error: " + errorText);
-        return;
-      }
-
-      alert("Widget settings updated successfully");
-window.location.reload();
-    } catch (err) {
-      console.error("Error submitting form:", err);
-      alert("Error saving settings.");
-    }
-  };
-
   const widgetHtml = `
     <html>
       <head>
-<style>
-  .chat-widget {
-    background-color: ${color};
-    width: 300px;
-    height: 400px;
-    border-radius: 10px;
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    font-family: sans-serif;
-  }
+        <style>
+          .chat-widget {
+            background-color: ${color};
+            width: 300px;
+            height: 400px;
+            border-radius: 10px;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            font-family: sans-serif;
+          }
 
-  .chat-header {
-    background-color: #333;
-    color: white;
-    padding: 10px;
-    text-align: center;
-    border-radius: 10px 10px 0 0;
-    font-size: 16px;
-  }
+          .chat-header {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 10px 10px 0 0;
+            font-size: 16px;
+          }
 
-  .chat-body {
-    flex-grow: 1;
-    padding: 10px;
-    overflow-y: auto;
-    font-size: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
+          .chat-body {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
 
-  .chat-input {
-    display: flex;
-    border-top: 1px solid #ccc;
-    padding: 10px;
-  }
+          .chat-input {
+            display: flex;
+            border-top: 1px solid #ccc;
+            padding: 10px;
+          }
 
-  .chat-input input {
-    flex-grow: 1;
-    padding: 8px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-  }
+          .chat-input input {
+            flex-grow: 1;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+          }
 
-  .chat-input button {
-    margin-left: 10px;
-    padding: 8px 12px;
-    background-color: #333;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-  }
+          .chat-input button {
+            margin-left: 10px;
+            padding: 8px 12px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+          }
 
-  /* Message wrapper styles */
-  .message {
-    display: flex;
-  }
+          .message {
+            display: flex;
+          }
 
-  .message.user {
-    justify-content: flex-end;
-  }
+          .message.user {
+            justify-content: flex-end;
+          }
 
-  .message.agent {
-    justify-content: flex-start;
-  }
+          .message.agent {
+            justify-content: flex-start;
+          }
 
-  .message.user p {
-    background-color: #dcf8c6;
-    color: #000;
-    padding: 8px 12px;
-    border-radius: 16px 16px 0 16px;
-    max-width: 75%;
-    word-wrap: break-word;
-  }
+          .message.user p {
+            background-color: #dcf8c6;
+            color: #000;
+            padding: 8px 12px;
+            border-radius: 16px 16px 0 16px;
+            max-width: 75%;
+            word-wrap: break-word;
+          }
 
-  .message.agent p {
-    background-color: #fff;
-    color: #000;
-    padding: 8px 12px;
-    border-radius: 16px 16px 16px 0;
-    max-width: 75%;
-    word-wrap: break-word;
-    border: 1px solid #ddd;
-  }
-</style>
-
+          .message.agent p {
+            background-color: #fff;
+            color: #000;
+            padding: 8px 12px;
+            border-radius: 16px 16px 16px 0;
+            max-width: 75%;
+            word-wrap: break-word;
+            border: 1px solid #ddd;
+          }
+        </style>
       </head>
       <body>
         <div class="chat-widget">
           <div class="chat-header">${greeting}</div>
           <div class="chat-body">
-            <p>Welcome! You are chatting with ${agentName}.</p>
+            <div class="message agent">
+              <p>Welcome! You are chatting with ${agentName}.</p>
+            </div>
             <div id="messages"></div>
           </div>
           <div class="chat-input">
@@ -501,27 +516,36 @@ window.location.reload();
         <script>
           function sendMessage() {
             const input = document.getElementById('messageInput');
-            const message = input.value;
+            const message = input.value.trim();
             if (message) {
-              window.parent.postMessage({ message }, "*");
+              window.parent.postMessage({ 
+                type: "message",
+                content: message 
+              }, "*");
               input.value = '';
-              appendMessage("You: " + message);
+              appendMessage(message, "user");
             }
           }
-          function appendMessage(msg, isError = false) {
+
+          function appendMessage(content, sender) {
             const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = \`message \${sender}\`;
+            
             const p = document.createElement('p');
-            p.innerText = msg;
-            if (isError) p.style.color = "red";
-            messagesDiv.appendChild(p);
+            p.innerText = sender === "user" ? \`You: \${content}\` : \`\${content}\`;
+            messageDiv.appendChild(p);
+            
+            messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
           }
+
           window.addEventListener("message", function(event) {
-            if (event.data?.response) {
-              appendMessage("Agent: " + event.data.response);
+            if (event.data?.type === "response") {
+              appendMessage(event.data.content, "agent");
             }
             if (event.data?.error) {
-              appendMessage("❌ " + event.data.error, true);
+              appendMessage("❌ " + event.data.error, "agent");
             }
           });
         </script>
@@ -568,21 +592,19 @@ window.location.reload();
               <input
                 type="radio"
                 name="visibility"
-                value="public"
                 checked={isPublic}
                 onChange={() => setIsPublic(true)}
               />
-              Public
+              Enable
             </label>
             <label className="flex items-center gap-1">
               <input
                 type="radio"
                 name="visibility"
-                value="private"
                 checked={!isPublic}
                 onChange={() => setIsPublic(false)}
               />
-              Private
+              Disable
             </label>
           </div>
         </div>
@@ -590,11 +612,14 @@ window.location.reload();
 
       <div className="my-4">
         <button
-          onClick={toggleWidget}
+          onClick={() => setShowWidget(!showWidget)}
           className="bg-green-600 text-white px-4 py-2 rounded"
         >
           {showWidget ? "Hide Widget" : "Show Widget"}
         </button>
+        <span className="ml-2 text-sm">
+          {isConnected ? "🟢 Connected" : "🔴 Disconnected"}
+        </span>
       </div>
 
       {showWidget && (
@@ -606,6 +631,7 @@ window.location.reload();
             border: "1px solid #ccc",
             borderRadius: "12px",
           }}
+          title="Chat widget preview"
         />
       )}
 
@@ -617,23 +643,11 @@ window.location.reload();
           className="w-full p-2 border border-gray-300 rounded font-mono"
           rows={5}
         />
-        <p className="text-sm text-gray-500 mt-1">
-          Copy and paste this script into your website's HTML to embed the chat widget.
-        </p>
-      </div>
-
-      <div className="mt-4">
-        <button
-          onClick={handleSubmit}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-        >
-          Submit
-        </button>
       </div>
     </div>
   );
 };
 
-
-
 const AnalysisTabContent = () => <div>Analysis settings go here...</div>;
+
+export default AgentEditor;
