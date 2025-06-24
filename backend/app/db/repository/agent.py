@@ -129,6 +129,23 @@ async def create_agent(
             detail="RA03: Database error while creating agent"
         )
 
+def validate_agent_config(config: AgentConfigSchema):
+    if config.context_window_size < 500 or config.context_window_size > 8000:
+        raise HTTPException(
+            status_code=400,
+            detail="Context window size must be between 500 and 8000 tokens"
+        )
+    if config.response_throttling < 0 or config.response_throttling > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Response throttling must be between 0 and 5 seconds"
+        )
+    if config.max_retries < 0 or config.max_retries > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Max retries must be between 0 and 5"
+        )
+
 #SH: Update agent config
 async def update_agent_config(
     db: AsyncSession, 
@@ -139,6 +156,8 @@ async def update_agent_config(
     
     #SH: Update the configuration of an existing agent.
     try:
+        validate_agent_config(config)
+
         #SH: Fetch the agent
         result = await db.execute(select(AgentDB).where(AgentDB.id == agent_id))
         db_agent = result.scalars().first()
@@ -170,6 +189,13 @@ async def update_agent_config(
         db_agent.temperature = config.temperature
         db_agent.max_length = config.max_length
         db_agent.system_prompt = config.system_prompt
+
+        db_agent.context_window_size = config.context_window_size
+        db_agent.response_throttling = config.response_throttling
+        db_agent.domain_focus = config.domain_focus
+        db_agent.enable_fallback = config.enable_fallback
+        db_agent.max_retries = config.max_retries
+
         #SH: Update widget settings
         db_agent.greeting_message = config.greeting_message
         db_agent.theme_color = config.theme_color
@@ -241,3 +267,25 @@ async def update_agent_knowledge(
         await db.execute(insert_stmt)
     
     await db.commit()
+    
+def validate_agent_config(config: AgentConfigSchema):
+    # Validate context window size
+    if config.context_window_size < 500 or config.context_window_size > 8000:
+        raise HTTPException(
+            status_code=400,
+            detail="Context window size must be between 500 and 8000 tokens"
+        )
+    
+    # Validate response throttling
+    if config.response_throttling < 0 or config.response_throttling > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Response throttling must be between 0 and 5 seconds"
+        )
+    
+    # Validate max retries
+    if config.max_retries < 0 or config.max_retries > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Max retries must be between 0 and 5"
+        )

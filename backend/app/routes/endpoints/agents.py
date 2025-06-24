@@ -46,6 +46,48 @@ async def read_agents(
     agents_out = [AgentOut.model_validate(agent.__dict__) for agent in agents]  
     return success_response("Agents retrieved successfully", data=agents_out)
 
+@router.get("/config-docs", response_model=dict)
+async def get_configuration_documentation():
+    """Returns documentation for agent configuration options"""
+    return {
+        "documentation": {
+            "context_window_size": {
+                "description": "Maximum tokens for context memory",
+                "type": "integer",
+                "default": 2000,
+                "range": "500-8000 tokens",
+                "effect": "Larger windows allow more context but increase cost and latency"
+            },
+            "response_throttling": {
+                "description": "Delay in seconds between responses",
+                "type": "float",
+                "default": 0.0,
+                "range": "0.0-5.0 seconds",
+                "effect": "Adds artificial delay to simulate human response times"
+            },
+            "domain_focus": {
+                "description": "Primary domain specialization",
+                "type": "string",
+                "default": "general",
+                "examples": ["finance", "healthcare", "customer support"],
+                "effect": "Optimizes responses for specific domains"
+            },
+            "enable_fallback": {
+                "description": "Enable fallback to simpler model",
+                "type": "boolean",
+                "default": True,
+                "effect": "Falls back to gpt-3.5-turbo when context is too large"
+            },
+            "max_retries": {
+                "description": "Maximum retries for failed operations",
+                "type": "integer",
+                "default": 2,
+                "range": "0-5",
+                "effect": "Number of retries for API failures before giving up"
+            }
+        }
+    }
+
 #SH: Get agent by id
 @router.get("/{agent_id}", response_model=AgentOut)
 async def read_agent(
@@ -133,6 +175,26 @@ async def update_agent_configuration(
             message="Max length must be greater than 0",
             http_status=status.HTTP_400_BAD_REQUEST
         )
+
+    #SH: Validate advanced configuration
+    if config.context_window_size < 500 or config.context_window_size > 8000:
+        return error_response(
+            message="Context window size must be between 500 and 8000 tokens",
+            http_status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if config.response_throttling < 0 or config.response_throttling > 5:
+        return error_response(
+            message="Response throttling must be between 0 and 5 seconds",
+            http_status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if config.max_retries < 0 or config.max_retries > 5:
+        return error_response(
+            message="Max retries must be between 0 and 5",
+            http_status=status.HTTP_400_BAD_REQUEST
+        )
+
     #SH: Validate color format
     if not re.match(r'^#(?:[0-9a-fA-F]{3}){1,2}$', config.theme_color):
         return error_response("Invalid color format", 400)
@@ -290,3 +352,4 @@ async def get_user_conversations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve conversations"
         )
+
