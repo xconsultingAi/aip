@@ -1,14 +1,15 @@
 from datetime import datetime
 from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models.knowledge_base import KnowledgeBase, TextKnowledge, URLKnowledge, YouTubeKnowledge
-from app.models.knowledge_base import KnowledgeBaseCreate
+from app.db.models.knowledge_base import KnowledgeBase, TextKnowledge, URLKnowledge, YouTubeKnowledge, Category, Tag, knowledge_tag
+from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeUpdate
 from app.db.models.agent import agent_knowledge
-from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from fastapi import HTTPException, logger, status
+from sqlalchemy import or_, select, func
 from typing import Any, Dict, List, Optional
 from app.core.youtube_processer import YouTubeProcessor
-from app.db.models.chat import Conversation
+from sqlalchemy.orm import aliased
+from sqlalchemy.orm import selectinload
 
 # SH: This file will contain all the database operations related to the Knowledge base Models
 
@@ -19,51 +20,37 @@ async def create_knowledge_entry(
     file_size: int,
     chunk_count: int,
     knowledge_ids: Optional[List[int]] = None
-):
-    # SH: Validate the input data
+) -> KnowledgeBase:  # Change return type to KnowledgeBase
     if not isinstance(knowledge_data, KnowledgeBaseCreate):
         raise TypeError("knowledge_data must be a KnowledgeBaseCreate instance")
 
-    # SH: If no knowledge_ids are provided, initialize an empty list
-    if knowledge_ids is None:
-        knowledge_ids = []
-
     try:
-        # SH: Create dict from knowledge_data without unpacking it directly
-        knowledge_dict = knowledge_data.model_dump()
-
-        # SH: Create a new KnowledgeBase ORM object using the provided data
+        # Create the knowledge base record
         db_knowledge = KnowledgeBase(
+            name=knowledge_data.name,
+            filename=knowledge_data.filename,
+            content_type=knowledge_data.content_type,
+            format=knowledge_data.format,
+            organization_id=knowledge_data.organization_id,
             file_size=file_size,
             chunk_count=chunk_count,
-            **knowledge_dict
+            source_type="file"  # Make sure this matches your model
         )
 
-        # SH: Add and commit the new knowledge base to the database
         db.add(db_knowledge)
         await db.commit()
         await db.refresh(db_knowledge)
-
-        # SH: Return a dictionary containing knowledge base details
-        return {
-            "id": db_knowledge.id,
-            "name": db_knowledge.name,
-            "filename": db_knowledge.filename,
-            "content_type": db_knowledge.content_type,
-            "format": db_knowledge.format,
-            "organization_id": db_knowledge.organization_id,
-            "uploaded_at": db_knowledge.uploaded_at.isoformat() if db_knowledge.uploaded_at else None,
-            "file_size": db_knowledge.file_size,
-            "chunk_count": db_knowledge.chunk_count
-        }
+        
+        # Return the SQLAlchemy model object
+        return db_knowledge
 
     except Exception as e:
-        # SH: Rollback the transaction and raise an HTTP error in case of failure
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
         )
+
 # SH: Get the knowledge base entry linked to a specific Organization
 async def get_organization_knowledge_bases(
     db: AsyncSession, 
@@ -269,7 +256,6 @@ async def create_text_knowledge(
             detail=f"Failed to create Text knowledge: {str(e)}"
         )
 
-
 #SH: Get agent count for knowledge base
 async def get_agent_count_for_knowledge_base(
     db: AsyncSession,
@@ -280,3 +266,396 @@ async def get_agent_count_for_knowledge_base(
         .where(agent_knowledge.c.knowledge_id == knowledge_id)
     )
     return result.scalar_one()
+
+# ==================== CATEGORY AND TAGGING SYSTEM ====================
+
+# Category CRUD operations
+async def create_category(db: AsyncSession, category_data: dict):
+    try:
+        category = Category(**category_data)
+        db.add(category)
+        await db.commit()
+        await db.refresh(category)
+        return category
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+async def get_category(db: AsyncSession, category_id: int, organization_id: int):
+    result = await db.execute(
+        select(Category)
+        .where(
+            Category.id == category_id,
+            Category.organization_id == organization_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+async def get_categories(db: AsyncSession, organization_id: int):
+    result = await db.execute(
+        select(Category)
+        .where(Category.organization_id == organization_id)
+        .order_by(Category.name)
+    )
+    return result.scalars().all()
+
+async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict]:
+    # Get all categories with their children loaded
+    result = await db.execute(
+        select(Category)
+        .where(Category.organization_id == organization_id)
+        .options(
+            selectinload(Category.children)
+        )
+        .order_by(Category.name)
+    )
+    categories = result.scalars().all()
+
+    # Build tree structure with all required fields
+    def build_tree(category: Category) -> dict:
+        return {
+            "id": category.id,
+            "name": category.name,
+            "description": category.description,
+            "parent_id": category.parent_id,
+            "organization_id": category.organization_id,
+            "created_at": category.created_at,
+            "updated_at": category.updated_at,
+            "children": [build_tree(child) for child in category.children]
+        }
+
+    # Only return root categories (where parent_id is None)
+    tree = [build_tree(c) for c in categories if c.parent_id is None]
+    return tree
+
+async def update_category(db: AsyncSession, category_id: int, organization_id: int, update_data: dict):
+    category = await get_category(db, category_id, organization_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    for field, value in update_data.items():
+        setattr(category, field, value)
+    
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+async def delete_category(db: AsyncSession, category_id: int, organization_id: int):
+    category = await get_category(db, category_id, organization_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Check if category has children
+    result = await db.execute(
+        select(func.count(Category.id))
+        .where(Category.parent_id == category_id)
+    )
+    child_count = result.scalar_one()
+    
+    if child_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete category with subcategories. Move or delete subcategories first."
+        )
+    
+    # Check if category has knowledge bases
+    result = await db.execute(
+        select(func.count(KnowledgeBase.id))
+        .where(KnowledgeBase.category_id == category_id)
+    )
+    kb_count = result.scalar_one()
+    
+    if kb_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete category with knowledge bases. Reassign knowledge bases first."
+        )
+    
+    await db.delete(category)
+    await db.commit()
+    return True
+
+# Tag CRUD operations
+async def create_tag(db: AsyncSession, tag_data: dict):
+    try:
+        # Check if tag with same name already exists for organization
+        existing = await db.execute(
+            select(Tag)
+            .where(
+                Tag.name == tag_data['name'],
+                Tag.organization_id == tag_data['organization_id']
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Tag with this name already exists"
+            )
+            
+        tag = Tag(**tag_data)
+        db.add(tag)
+        await db.commit()
+        await db.refresh(tag)
+        return tag
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+async def get_tag(db: AsyncSession, tag_id: int, organization_id: int):
+    result = await db.execute(
+        select(Tag)
+        .where(
+            Tag.id == tag_id,
+            Tag.organization_id == organization_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+async def get_tags(db: AsyncSession, organization_id: int, search: str = None):
+    query = select(Tag).where(Tag.organization_id == organization_id)
+    
+    if search:
+        query = query.where(Tag.name.ilike(f"%{search}%"))
+    
+    query = query.order_by(Tag.name)
+    
+    result = await db.execute(query)
+    return result.scalars().all()
+
+async def update_tag(db: AsyncSession, tag_id: int, organization_id: int, name: str):
+    tag = await get_tag(db, tag_id, organization_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    
+    # Check if new name already exists
+    existing = await db.execute(
+        select(Tag)
+        .where(
+            Tag.name == name,
+            Tag.organization_id == organization_id,
+            Tag.id != tag_id
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Tag with this name already exists"
+        )
+    
+    tag.name = name
+    await db.commit()
+    await db.refresh(tag)
+    return tag
+
+async def delete_tag(db: AsyncSession, tag_id: int, organization_id: int):
+    tag = await get_tag(db, tag_id, organization_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    
+    # Check if tag is used by any knowledge base
+    result = await db.execute(
+        select(func.count(knowledge_tag.c.knowledge_id))
+        .where(knowledge_tag.c.tag_id == tag_id)
+    )
+    kb_count = result.scalar_one()
+    
+    if kb_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete tag that is assigned to knowledge bases. Remove tag assignments first."
+        )
+    
+    await db.delete(tag)
+    await db.commit()
+    return True
+
+async def update_knowledge_categories_tags(
+    db: AsyncSession,
+    knowledge_id: int,
+    organization_id: int,
+    update_data: KnowledgeUpdate
+):
+    # Fetch knowledge base
+    result = await db.execute(
+        select(KnowledgeBase)
+        .options(
+            selectinload(KnowledgeBase.category),
+            selectinload(KnowledgeBase.tags)
+        )
+        .where(
+            KnowledgeBase.id == knowledge_id,
+            KnowledgeBase.organization_id == organization_id
+        )
+    )
+    kb = result.scalar_one_or_none()
+
+    if not kb:
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+
+    # Update category if provided
+    if update_data.category_id is not None:
+        if update_data.category_id == 0:  # Remove category
+            kb.category = None
+        else:
+            result = await db.execute(
+                select(Category).where(
+                    Category.id == update_data.category_id,
+                    Category.organization_id == organization_id
+                )
+            )
+            category = result.scalar_one_or_none()
+            if not category:
+                raise HTTPException(status_code=404, detail="Category not found")
+            kb.category = category
+
+    # Update tags if provided
+    if update_data.tag_ids is not None:
+        result = await db.execute(
+            select(Tag).where(
+                Tag.id.in_(update_data.tag_ids),
+                Tag.organization_id == organization_id
+            )
+        )
+        kb.tags = result.scalars().all()
+
+    try:
+        await db.commit()
+        await db.refresh(kb)
+        return kb
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error during update: {str(e)}"
+        )
+        
+async def get_knowledge_by_category(
+    db: AsyncSession,
+    organization_id: int,
+    category_id: Optional[int] = None,
+    include_subcategories: bool = False
+) -> List[KnowledgeBase]:
+    query = select(KnowledgeBase).where(
+        KnowledgeBase.organization_id == organization_id
+    ).options(
+        selectinload(KnowledgeBase.category),  # Eager load category
+        selectinload(KnowledgeBase.tags)       # Eager load tags
+    )
+    
+    if category_id is not None:
+        if include_subcategories:
+            # Get all subcategory IDs
+            CategoryAlias = aliased(Category)
+            subq = (
+                select(CategoryAlias.id)
+                .where(CategoryAlias.parent_id == category_id)
+                .cte(recursive=True)
+            )
+            subq = subq.union_all(
+                select(CategoryAlias.id)
+                .join(subq, CategoryAlias.parent_id == subq.c.id)
+            )
+            query = query.where(
+                or_(
+                    KnowledgeBase.category_id == category_id,
+                    KnowledgeBase.category_id.in_(select(subq.c.id))
+                )
+            )
+        else:
+            query = query.where(KnowledgeBase.category_id == category_id)
+    else:
+        query = query.where(KnowledgeBase.category_id.is_(None))
+    
+    result = await db.execute(query.order_by(KnowledgeBase.name))
+    return result.scalars().all()
+
+async def get_knowledge_by_tag(
+    db: AsyncSession,
+    organization_id: int,
+    tag_id: int
+) -> List[KnowledgeBase]:
+    result = await db.execute(
+        select(KnowledgeBase)
+        .options(
+            selectinload(KnowledgeBase.category),
+            selectinload(KnowledgeBase.tags)
+        )
+        .join(KnowledgeBase.tags)
+        .where(
+            KnowledgeBase.organization_id == organization_id,
+            Tag.id == tag_id
+        )
+        .order_by(KnowledgeBase.name)
+    )
+    return result.scalars().all()
+
+# Add new search function
+async def search_knowledge(
+    db: AsyncSession,
+    query: str,
+    organization_id: int,
+    file_types: Optional[List[str]] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    category_id: Optional[int] = None,
+    tag_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 10
+) -> tuple[list, int]:
+    try:
+        # Base query
+        stmt = select(KnowledgeBase).options(
+            selectinload(KnowledgeBase.category),
+            selectinload(KnowledgeBase.tags)
+        ).where(KnowledgeBase.organization_id == organization_id)
+        
+        # Keyword search across name, category, and tags
+        if query:
+            stmt = stmt.join(KnowledgeBase.category, isouter=True)
+            stmt = stmt.join(KnowledgeBase.tags, isouter=True)
+            stmt = stmt.where(or_(
+                KnowledgeBase.name.ilike(f"%{query}%"),
+                Category.name.ilike(f"%{query}%"),
+                Tag.name.ilike(f"%{query}%")
+            ))
+        
+        # Apply filters
+        if file_types:
+            stmt = stmt.where(KnowledgeBase.format.in_(file_types))
+        if start_date:
+            stmt = stmt.where(KnowledgeBase.uploaded_at >= start_date)
+        if end_date:
+            stmt = stmt.where(KnowledgeBase.uploaded_at <= end_date)
+        if category_id:
+            stmt = stmt.where(KnowledgeBase.category_id == category_id)
+        if tag_id:
+            stmt = stmt.join(knowledge_tag).where(knowledge_tag.c.tag_id == tag_id)
+        
+        # Get total count
+        count_query = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar_one()
+        
+        # Apply pagination
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        
+        # Execute query
+        result = await db.execute(stmt)
+        knowledge_bases = result.scalars().unique().all()
+        
+        return knowledge_bases, total
+        
+    except Exception as e:
+        logger.error(f"Search failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search error: {str(e)}"
+        )
