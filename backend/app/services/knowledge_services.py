@@ -11,20 +11,25 @@ from langchain_community.document_loaders import(
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import select
+from app.core import vector_store
 from app.core.config import settings
 from app.core.exceptions import openai_exception
 from app.core.vector_store import get_organization_vector_store
 import chardet # type: ignore
-from typing import Optional
-from app.models.knowledge_base import KnowledgeURL, TextKnowledgeRequest, YouTubeKnowledgeRequest
+from typing import Optional, List
+from app.models.knowledge_base import KnowledgeSearchRequest, KnowledgeURL, TextKnowledgeRequest, YouTubeKnowledgeRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.url_processer import URLProcessor
 from app.core.pdf_utils import save_content_as_pdf
-from app.db.repository.knowledge_base import create_text_knowledge, create_url_knowledge, create_youtube_knowledge
+from app.db.repository.knowledge_base import create_category, create_tag, create_text_knowledge, create_url_knowledge, create_youtube_knowledge, delete_category, delete_tag, get_categories, get_category, get_category_tree, get_knowledge_by_category, get_knowledge_by_tag, get_tag, get_tags, search_knowledge, update_category, update_knowledge_categories_tags, update_tag
 import os
 from app.core.youtube_processer import YouTubeProcessor
 import hashlib
 from app.db.models.knowledge_base import TextKnowledge, YouTubeKnowledge
+from app.models.knowledge_base import (
+    CategoryCreate, CategoryOut, CategoryTree, 
+    TagCreate, TagOut, KnowledgeUpdate, KnowledgeBaseOut
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,27 +105,40 @@ def get_safe_loader(file_path: str, content_type: str):
         raise ValueError(f"Could not decode file with any supported encoding")
 
 #SH: Main function to process a file and store its embeddings
-def process_file(file_path: str, content_type: str, organization_id: int) -> int:
+def process_file(file_path: str, content_type: str, organization_id: int, knowledge_base_id: int) -> int:
     try:
-        #SH: Get vector store instance for a specific organization
+        # SH: Get vector store instance for a specific organization
         vector_store = get_organization_vector_store(organization_id)
         loader = get_safe_loader(file_path, content_type)
 
         try:
-            #SH: Load the file's content into LangChain Document format
+            # SH: Load the file's content into LangChain Document format
             documents = loader.load()
-            #SH: Split content into chunks
+
+            # SH: Split content into chunks
             chunks = text_splitter.split_documents(documents)
-            #SH: Add the processed chunks into the organization’s vector store
-            vector_store.add_documents(chunks)
-            #SH: Return number of chunks created
+
+            # SH: Add the processed chunks into the organization's vector store with metadata
+            for i, chunk in enumerate(chunks):
+                vector_store.add_texts(
+                    texts=[chunk.page_content],
+                    metadatas=[{
+                        "chunk_index": i,
+                        "knowledge_id": knowledge_base_id,
+                        "organization_id": organization_id,
+                        "source": file_path
+                    }]
+                )
+
+            # SH: Return number of chunks created
             return len(chunks)
+
         except Exception as load_error:
             logger.error(f"Failed to process file {file_path}: {str(load_error)}")
             raise openai_exception(f"File processing failed: {str(load_error)}")
 
     except Exception as e:
-        #SH: Raise a custom exception if anything fails
+        # SH: Raise a custom exception if anything fails
         logger.error(f"File processing error for {file_path}: {str(e)}", exc_info=True)
         raise openai_exception(f"Could not process file: {str(e)}")
 
@@ -352,3 +370,246 @@ async def process_text(
     except Exception as e:
         logger.error(f"Text Processing Error: {str(e)}", exc_info=True)
         raise
+
+# ==================== CATEGORY AND TAGGING SERVICES ====================
+
+# Category Services
+async def create_category_service(
+    db: AsyncSession,
+    category_data: CategoryCreate
+) -> CategoryOut:
+    try:
+        category = await create_category(db, category_data.model_dump())
+        return CategoryOut.model_validate(category)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create category: {str(e)}"
+        )
+
+async def get_category_service(
+    db: AsyncSession,
+    category_id: int,
+    organization_id: int
+) -> CategoryOut:
+    category = await get_category(db, category_id, organization_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return CategoryOut.model_validate(category)
+
+async def get_categories_service(
+    db: AsyncSession,
+    organization_id: int
+) -> List[CategoryOut]:
+    categories = await get_categories(db, organization_id)
+    return [CategoryOut.model_validate(c) for c in categories]
+
+async def get_category_tree_service(
+    db: AsyncSession,
+    organization_id: int
+) -> List[CategoryTree]:
+    tree = await get_category_tree(db, organization_id)
+    return [CategoryTree.model_validate(c) for c in tree]
+
+async def update_category_service(
+    db: AsyncSession,
+    category_id: int,
+    organization_id: int,
+    update_data: dict
+) -> CategoryOut:
+    category = await update_category(db, category_id, organization_id, update_data)
+    return CategoryOut.model_validate(category)
+
+async def delete_category_service(
+    db: AsyncSession,
+    category_id: int,
+    organization_id: int
+) -> bool:
+    return await delete_category(db, category_id, organization_id)
+
+# Tag Services
+async def create_tag_service(
+    db: AsyncSession,
+    tag_data: TagCreate
+) -> TagOut:
+    try:
+        tag = await create_tag(db, tag_data.model_dump())
+        return TagOut.model_validate(tag)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create tag: {str(e)}"
+        )
+
+async def get_tag_service(
+    db: AsyncSession,
+    tag_id: int,
+    organization_id: int
+) -> TagOut:
+    tag = await get_tag(db, tag_id, organization_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return TagOut.model_validate(tag)
+
+async def get_tags_service(
+    db: AsyncSession,
+    organization_id: int,
+    search: str = None
+) -> List[TagOut]:
+    tags = await get_tags(db, organization_id, search)
+    return [TagOut.model_validate(t) for t in tags]
+
+async def update_tag_service(
+    db: AsyncSession,
+    tag_id: int,
+    organization_id: int,
+    name: str
+) -> TagOut:
+    tag = await update_tag(db, tag_id, organization_id, name)
+    return TagOut.model_validate(tag)
+
+async def delete_tag_service(
+    db: AsyncSession,
+    tag_id: int,
+    organization_id: int
+) -> bool:
+    return await delete_tag(db, tag_id, organization_id)
+
+async def update_knowledge_categories_tags_service(
+    db: AsyncSession,
+    knowledge_id: int,
+    organization_id: int,
+    update_data: KnowledgeUpdate
+) -> KnowledgeBaseOut:
+    try:
+        kb = await update_knowledge_categories_tags(
+            db=db,
+            knowledge_id=knowledge_id,
+            organization_id=organization_id,
+            category_id=update_data.category_id,
+            tag_ids=update_data.tag_ids
+        )
+        return KnowledgeBaseOut.model_validate(kb)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update knowledge base: {str(e)}"
+        )
+
+async def get_knowledge_by_category_service(
+    db: AsyncSession,
+    organization_id: int,
+    category_id: Optional[int] = None,
+    include_subcategories: bool = False
+) -> List[KnowledgeBaseOut]:
+    try:
+        kbs = await get_knowledge_by_category(
+            db=db,
+            organization_id=organization_id,
+            category_id=category_id,
+            include_subcategories=include_subcategories
+        )
+        return [KnowledgeBaseOut.model_validate(kb) for kb in kbs]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get knowledge bases: {str(e)}"
+        )
+
+async def get_knowledge_by_tag_service(
+    db: AsyncSession,
+    organization_id: int,
+    tag_id: int
+) -> List[KnowledgeBaseOut]:
+    try:
+        kbs = await get_knowledge_by_tag(
+            db=db,
+            organization_id=organization_id,
+            tag_id=tag_id
+        )
+        return [KnowledgeBaseOut.model_validate(kb) for kb in kbs]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get knowledge bases: {str(e)}"
+        )
+        
+# Add snippet generation function
+def generate_snippet(query: str, knowledge_base_id: int, organization_id: int) -> str:
+    try:
+        # Search vector store for most relevant chunk
+        results = vector_store.similarity_search(
+            query=query,
+            k=1,
+            filter={
+                "knowledge_id": knowledge_base_id,
+                "organization_id": organization_id
+            }
+        )
+        
+        if results:
+            # Extract and truncate snippet
+            content = results[0].page_content
+            return (content[:200] + '...') if len(content) > 200 else content
+        
+        return f"Relevant content containing '{query}'"
+        
+    except Exception as e:
+        logger.error(f"Snippet generation failed: {str(e)}")
+        return f"Document related to '{query}'"
+# Add new search service
+async def search_knowledge_service(
+    db: AsyncSession,
+    search_request: KnowledgeSearchRequest,
+    organization_id: int
+) -> dict:
+    # Call repository function
+    knowledge_bases, total = await search_knowledge(
+        db=db,
+        query=search_request.query,
+        organization_id=organization_id,
+        file_types=search_request.file_types,
+        start_date=search_request.start_date,
+        end_date=search_request.end_date,
+        category_id=search_request.category_id,
+        tag_id=search_request.tag_id
+    )
+    
+    # Format results with snippets
+    results = []
+    for kb in knowledge_bases:
+        # In a real implementation, you would generate actual content snippets
+        # For this example, we're using a placeholder
+        snippet = generate_snippet(
+            query=search_request.query,
+            knowledge_base_id=kb.id,
+            organization_id=organization_id
+        )
+
+        if search_request.query:
+            for term in search_request.query.split():
+                snippet = snippet.replace(term, f"<mark>{term}</mark>")
+
+        results.append({
+            "id": kb.id,
+            "name": kb.name,
+            "filename": kb.filename,
+            "content_type": kb.content_type,
+            "format": kb.format,
+            "uploaded_at": kb.uploaded_at,
+            "file_size": kb.file_size,
+            "snippet": snippet,
+            "category": kb.category,
+            "tags": kb.tags
+        })
+    
+    return {
+        "results": results,
+        "total": total
+    }
