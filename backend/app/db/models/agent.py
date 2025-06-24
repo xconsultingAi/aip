@@ -20,6 +20,13 @@ class Agent(Base):
     max_length = Column(Integer, default=500)
     system_prompt = Column(Text, default="You are a helpful assistant")
     config = Column(JSON, nullable=False, server_default='{}')
+    # Advanced configuration
+    context_window_size = Column(Integer, default=2000)
+    response_throttling = Column(Float, default=0.0)
+    domain_focus = Column(String(50), default="general")
+    enable_fallback = Column(Boolean, default=True)
+    max_retries = Column(Integer, default=2)
+    
     #SH: Column for Widget
     greeting_message = Column(String(200), default="Hello! How can I help?")
     theme_color = Column(String(7), default="#22c55e")  # Hex format
