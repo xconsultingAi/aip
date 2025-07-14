@@ -1,19 +1,33 @@
 import logging
-from fastapi import APIRouter, Body, Form, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, Body, Form, HTTPException, UploadFile, File, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models.user import User
 from app.db.models.knowledge_base import KnowledgeBase
-from app.services.knowledge_services import process_file, process_text, process_url, process_youtube
-from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_count_for_knowledge_base
+from app.services.knowledge_services import (create_category_service, 
+create_tag_service, delete_category_service, delete_tag_service, get_categories_service,
+get_category_service, get_category_tree_service, get_knowledge_by_category_service,
+get_knowledge_by_tag_service, get_tag_service, get_tags_service,
+process_file, process_text, process_url, process_youtube, search_knowledge_service, update_category_service,
+update_tag_service)
+from app.db.repository.knowledge_base import create_knowledge_entry, get_agent_count_for_knowledge_base, update_knowledge_categories_tags
 from app.dependencies.auth import get_current_user
-from app.models.knowledge_base import KnowledgeBaseOut, KnowledgeBaseCreate,KnowledgeFormatCount, KnowledgeBaseAgentCount, KnowledgeURL, OrganizationKnowledgeCount, TextKnowledgeRequest, YouTubeKnowledgeRequest
+from app.models.knowledge_base import (
+    KnowledgeBaseOut, KnowledgeBaseCreate, KnowledgeFormatCount, 
+    KnowledgeBaseAgentCount, KnowledgeSearchRequest, KnowledgeSearchResponse, KnowledgeURL, OrganizationKnowledgeCount, 
+    TextKnowledgeRequest, YouTubeKnowledgeRequest,
+    CategoryCreate, CategoryOut, CategoryTree, TagCreate, TagOut, KnowledgeUpdate
+)
+
 from app.core.responses import success_response, error_response
 import os
 import uuid
 from pathlib import Path
+from typing import List, Optional
+from sqlalchemy.orm import selectinload
+
 
 #SH: This is our Main Router for all the routes related to Knowledge base
 router = APIRouter(tags=["knowledge"])
@@ -31,6 +45,7 @@ async def upload_knowledge(
     #SH: Ensure user belongs to an organization
     if not current_user.organization_id:
         return error_response("User must belong to an organization to upload KB", 400)
+    
     #SH: Validate file type
     if file.content_type not in settings.ALLOWED_CONTENT_TYPES:
         return error_response(
@@ -46,16 +61,16 @@ async def upload_knowledge(
             400
         )
 
-    #SH: Read file content and reset cursor
     try:
+        #SH: Read file content and reset cursor
         content = await file.read()
         file.file.seek(0)
         file_size = len(content)
 
         if file_size > settings.MAX_FILE_SIZE:
-            return error_response("File size exceeds 10MB limit", 400)
+            return error_response("File size exceeds limit", 400)
 
-        #SH: Unique filename
+        #SH: Generate unique filename
         ext = Path(file.filename).suffix
         unique_id = uuid.uuid4().hex[:8]
         unique_filename = f"{unique_id}{ext}"
@@ -66,12 +81,7 @@ async def upload_knowledge(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        #SH: Process file with organization_id
-        chunk_count = process_file(file_path, file.content_type, current_user.organization_id)
-        if chunk_count is None:
-            raise ValueError("File processing failed")
-
-        #SH: Create database entry
+        #SH: Create database entry first with chunk_count=0
         knowledge_data = KnowledgeBaseCreate(
             name=name,
             filename=unique_filename,
@@ -84,11 +94,27 @@ async def upload_knowledge(
             db=db,
             knowledge_data=knowledge_data,
             file_size=file_size,
-            chunk_count=chunk_count
+            chunk_count=0  # Temporary value, will be updated
         )
+
+        #SH: Process file with the knowledge_base_id
+        chunk_count = process_file(file_path, file.content_type, current_user.organization_id, db_entry.id)
+
+        #SH: Update the chunk count in the database
+        db_entry.chunk_count = chunk_count
+        await db.commit()
+
+        #SH: Load relationships (e.g. tags)
+        result = await db.execute(
+            select(KnowledgeBase)
+            .where(KnowledgeBase.id == db_entry.id)
+            .options(selectinload(KnowledgeBase.tags))
+        )
+        db_entry_with_relations = result.scalar_one()
+
         return success_response(
             "File uploaded and processed",
-            KnowledgeBaseOut.model_validate(db_entry)
+            KnowledgeBaseOut.model_validate(db_entry_with_relations)
         )
 
     except Exception as e:
@@ -97,7 +123,7 @@ async def upload_knowledge(
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
         return error_response(str(e), 500)
-
+    
 #SH: Get organization knowledge bases
 @router.get("/org_knowledge_base", response_model=list[KnowledgeBaseOut])
 async def get_organization_knowledge_bases(
@@ -271,3 +297,261 @@ async def get_agent_count(
         except Exception as e:
             logger.error(f"Error getting agent count: {str(e)}")
             return error_response("Could not retrieve agent count", 500)
+# SH: Category Routes
+
+# SH: Create a new category for the user's organization
+@router.post("/categories", response_model=CategoryOut)
+async def create_category(
+    category_data: CategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    # SH: Assign organization ID to the new category
+    category_data.organization_id = current_user.organization_id
+    return await create_category_service(db, category_data)
+
+# SH: Get hierarchical tree of all categories in the user's organization
+@router.get("/categories/tree", response_model=List[CategoryTree])
+async def get_category_tree(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_category_tree_service(db, current_user.organization_id)
+
+# SH: Get flat list of categories for the user's organization
+@router.get("/categories", response_model=List[CategoryOut])
+async def get_categories(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_categories_service(db, current_user.organization_id)
+
+# SH: Get a specific category by its ID
+@router.get("/categories/{category_id}", response_model=CategoryOut)
+async def get_category(
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_category_service(db, category_id, current_user.organization_id)
+
+# SH: Update an existing category
+@router.put("/categories/{category_id}", response_model=CategoryOut)
+async def update_category(
+    category_id: int,
+    update_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await update_category_service(
+        db, category_id, current_user.organization_id, update_data
+    )
+
+# SH: Delete a category by ID
+@router.delete("/categories/{category_id}")
+async def delete_category(
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    success = await delete_category_service(
+        db, category_id, current_user.organization_id
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete category")
+    return {"message": "Category deleted successfully"}
+
+# SH: Tag Routes
+
+# SH: Create a new tag for the user's organization
+@router.post("/tags", response_model=TagOut)
+async def create_tag(
+    tag_data: TagCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    tag_data.organization_id = current_user.organization_id
+    return await create_tag_service(db, tag_data)
+
+# SH: Get a tag by ID
+@router.get("/tags/{tag_id}", response_model=TagOut)
+async def get_tag(
+    tag_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_tag_service(db, tag_id, current_user.organization_id)
+
+# SH: Get a list of tags, optionally filtered by search
+@router.get("/tags", response_model=List[TagOut])
+async def get_tags(
+    search: Optional[str] = Query(None, min_length=1, max_length=50),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_tags_service(db, current_user.organization_id, search)
+
+# SH: Update a tag's name
+@router.put("/tags/{tag_id}", response_model=TagOut)
+async def update_tag(
+    tag_id: int,
+    name: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await update_tag_service(
+        db, tag_id, current_user.organization_id, name
+    )
+
+# SH: Delete a tag by ID
+@router.delete("/tags/{tag_id}")
+async def delete_tag(
+    tag_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    success = await delete_tag_service(
+        db, tag_id, current_user.organization_id
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete tag")
+    return {"message": "Tag deleted successfully"}
+
+# SH: Knowledge Base Categorization Routes
+
+# SH: Assign categories and tags to a knowledge base item
+@router.put("/knowledge/{knowledge_id}/categorize")
+async def update_knowledge_categories(
+    knowledge_id: int,
+    update_data: KnowledgeUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    try:
+        # SH: Perform update using service
+        updated_kb = await update_knowledge_categories_tags(
+            db=db,
+            knowledge_id=knowledge_id,
+            organization_id=current_user.organization_id,
+            update_data=update_data
+        )
+        return KnowledgeBaseOut.model_validate(updated_kb)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # SH: Handle unexpected errors
+        logger.error(f"Failed to update knowledge base: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update knowledge base: {str(e)}"
+        )
+
+# SH: Retrieve knowledge base items by category (with optional subcategories)
+@router.get("/knowledge/by-category")
+async def get_knowledge_by_category(
+    category_id: Optional[int] = Query(None),
+    include_subcategories: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_knowledge_by_category_service(
+        db=db,
+        organization_id=current_user.organization_id,
+        category_id=category_id,
+        include_subcategories=include_subcategories
+    )
+
+# SH: Retrieve knowledge base items by tag
+@router.get("/knowledge/by-tag/{tag_id}")
+async def get_knowledge_by_tag(
+    tag_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        raise HTTPException(status_code=400, detail="User must belong to an organization")
+    
+    return await get_knowledge_by_tag_service(
+        db=db,
+        organization_id=current_user.organization_id,
+        tag_id=tag_id
+    )
+
+# SH: Search endpoint for knowledge base
+@router.post("/search", response_model=KnowledgeSearchResponse)
+async def search_knowledge_base(
+    search_request: KnowledgeSearchRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # SH: Ensure the user is part of an organization
+    if not current_user.organization_id:
+        return error_response("User must belong to an organization to search KB", 400)
+    
+    try:
+        # SH: Perform search using service
+        search_result = await search_knowledge_service(
+            db=db,
+            search_request=search_request,
+            organization_id=current_user.organization_id
+        )
+        return success_response("Search completed", search_result)
+    except HTTPException as e:
+        return error_response(e.detail, e.status_code)
+    except Exception as e:
+        # SH: Handle unexpected errors
+        logger.error(f"Search endpoint error: {str(e)}")
+        return error_response("Internal server error", 500)

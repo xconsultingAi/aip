@@ -26,12 +26,15 @@ class Agent(Base):
     domain_focus = Column(String(50), default="general")
     enable_fallback = Column(Boolean, default=True)
     max_retries = Column(Integer, default=2)
-    
     #SH: Column for Widget
     greeting_message = Column(String(200), default="Hello! How can I help?")
     theme_color = Column(String(7), default="#22c55e")  # Hex format
     embed_code = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)
+    # For Personality constraints
+    personality_traits = Column(JSON, default=["friendly"])
+    custom_prompt = Column(Text)
+    personality_preview = Column(Text)    
     # SH: Relationships with user and organization table
     knowledge_bases = relationship("KnowledgeBase", secondary=agent_knowledge, back_populates="agents",overlaps="url_knowledge")
     owner = relationship("User", back_populates="agents")
@@ -42,4 +45,3 @@ class Agent(Base):
     url_knowledge = relationship("URLKnowledge", back_populates="agents", overlaps="knowledge_bases")
     youtube_knowledge = relationship("YouTubeKnowledge", back_populates="agents", overlaps="knowledge_bases")
     text_knowledge = relationship("TextKnowledge", back_populates="agents", overlaps="knowledge_bases")
-

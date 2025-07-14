@@ -11,7 +11,7 @@ class AgentConfigSchema(BaseModel):
     system_prompt: str = Field(default="You are a helpful assistant")
     knowledge_base_ids: List[int] = Field(default=[], description="Associated knowledge base IDs")
     
-    # Advanced configuration options
+    # SH: Advanced configuration options
     context_window_size: int = Field(default=2000,ge=500,le=8000,description="Maximum tokens for context memory")
     response_throttling: float = Field(default=0.0,ge=0.0,le=5.0,description="Delay in seconds between responses")
     domain_focus: str = Field(default="general",description="Primary domain specialization (e.g., finance, healthcare, customer support)")
@@ -24,14 +24,14 @@ class AgentConfigSchema(BaseModel):
     embed_code: Optional[str] = None
     is_public: Optional[bool] = False
 
-    # Validation for domain focus
+    # SH: Validation for domain focus
     @validator("domain_focus")
     def validate_domain_focus(cls, value):
         if not value.replace(" ", "").isalnum():
             raise ValueError("Domain focus must be alphanumeric")
         return value.lower()
 
-# Base Agent Model
+# SH: Base Agent Model
 class AgentBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="Agent name is compulsory")
     description: Optional[str] = Field(None, max_length=255, description="Description is optional")
@@ -42,11 +42,11 @@ class AgentBase(BaseModel):
     embed_code: Optional[str] = Field(default=None, description="Custom embed code for widget")
     is_public: bool = Field(default=False, description="Make agent publicly accessible")
 
-# Agent Creation Model
+# SH: Agent Creation Model
 class AgentCreate(AgentBase):
     pass
 
-# Agent Output Model
+# SH: Agent Output Model
 class AgentOut(AgentBase):
     id: int
     user_id: str
@@ -59,7 +59,7 @@ class AgentOut(AgentBase):
     embed_code: Optional[str]
     is_public: bool
 
-# Agent Response Model
+# SH: Agent Response Model
 class AgentResponse(BaseModel):
     id: int
     name: str

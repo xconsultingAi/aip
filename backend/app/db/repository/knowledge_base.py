@@ -267,9 +267,8 @@ async def get_agent_count_for_knowledge_base(
     )
     return result.scalar_one()
 
-# ==================== CATEGORY AND TAGGING SYSTEM ====================
+# SH: Category CRUD operations
 
-# Category CRUD operations
 async def create_category(db: AsyncSession, category_data: dict):
     try:
         category = Category(**category_data)
@@ -303,7 +302,7 @@ async def get_categories(db: AsyncSession, organization_id: int):
     return result.scalars().all()
 
 async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict]:
-    # Get all categories with their children loaded
+    # SH: Get all categories with their children loaded
     result = await db.execute(
         select(Category)
         .where(Category.organization_id == organization_id)
@@ -314,7 +313,7 @@ async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict
     )
     categories = result.scalars().all()
 
-    # Build tree structure with all required fields
+    # SH: Build tree structure with all required fields
     def build_tree(category: Category) -> dict:
         return {
             "id": category.id,
@@ -327,7 +326,7 @@ async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict
             "children": [build_tree(child) for child in category.children]
         }
 
-    # Only return root categories (where parent_id is None)
+    # SH: Only return root categories (where parent_id is None)
     tree = [build_tree(c) for c in categories if c.parent_id is None]
     return tree
 
@@ -348,7 +347,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    # Check if category has children
+    # SH: Check if category has children
     result = await db.execute(
         select(func.count(Category.id))
         .where(Category.parent_id == category_id)
@@ -361,7 +360,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
             detail="Cannot delete category with subcategories. Move or delete subcategories first."
         )
     
-    # Check if category has knowledge bases
+    # SH: Check if category has knowledge bases
     result = await db.execute(
         select(func.count(KnowledgeBase.id))
         .where(KnowledgeBase.category_id == category_id)
@@ -378,7 +377,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
     await db.commit()
     return True
 
-# Tag CRUD operations
+# SH: Tag CRUD operations
 async def create_tag(db: AsyncSession, tag_data: dict):
     try:
         # Check if tag with same name already exists for organization
@@ -435,7 +434,7 @@ async def update_tag(db: AsyncSession, tag_id: int, organization_id: int, name: 
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     
-    # Check if new name already exists
+    # SH: Check if new name already exists
     existing = await db.execute(
         select(Tag)
         .where(
@@ -460,7 +459,7 @@ async def delete_tag(db: AsyncSession, tag_id: int, organization_id: int):
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     
-    # Check if tag is used by any knowledge base
+    # SH: Check if tag is used by any knowledge base
     result = await db.execute(
         select(func.count(knowledge_tag.c.knowledge_id))
         .where(knowledge_tag.c.tag_id == tag_id)
@@ -483,7 +482,7 @@ async def update_knowledge_categories_tags(
     organization_id: int,
     update_data: KnowledgeUpdate
 ):
-    # Fetch knowledge base
+    # SH: Fetch knowledge base
     result = await db.execute(
         select(KnowledgeBase)
         .options(
@@ -500,7 +499,7 @@ async def update_knowledge_categories_tags(
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
 
-    # Update category if provided
+    # SH: Update category if provided
     if update_data.category_id is not None:
         if update_data.category_id == 0:  # Remove category
             kb.category = None
@@ -516,7 +515,7 @@ async def update_knowledge_categories_tags(
                 raise HTTPException(status_code=404, detail="Category not found")
             kb.category = category
 
-    # Update tags if provided
+    # SH: Update tags if provided
     if update_data.tag_ids is not None:
         result = await db.execute(
             select(Tag).where(
@@ -546,13 +545,13 @@ async def get_knowledge_by_category(
     query = select(KnowledgeBase).where(
         KnowledgeBase.organization_id == organization_id
     ).options(
-        selectinload(KnowledgeBase.category),  # Eager load category
-        selectinload(KnowledgeBase.tags)       # Eager load tags
+        selectinload(KnowledgeBase.category),
+        selectinload(KnowledgeBase.tags)
     )
     
     if category_id is not None:
         if include_subcategories:
-            # Get all subcategory IDs
+            # SH: Get all subcategory IDs
             CategoryAlias = aliased(Category)
             subq = (
                 select(CategoryAlias.id)
@@ -597,7 +596,7 @@ async def get_knowledge_by_tag(
     )
     return result.scalars().all()
 
-# Add new search function
+# SH: search function
 async def search_knowledge(
     db: AsyncSession,
     query: str,
@@ -611,13 +610,13 @@ async def search_knowledge(
     page_size: int = 10
 ) -> tuple[list, int]:
     try:
-        # Base query
+        # SH: Base query
         stmt = select(KnowledgeBase).options(
             selectinload(KnowledgeBase.category),
             selectinload(KnowledgeBase.tags)
         ).where(KnowledgeBase.organization_id == organization_id)
         
-        # Keyword search across name, category, and tags
+        # SH: Keyword search across name, category, and tags
         if query:
             stmt = stmt.join(KnowledgeBase.category, isouter=True)
             stmt = stmt.join(KnowledgeBase.tags, isouter=True)
@@ -627,7 +626,7 @@ async def search_knowledge(
                 Tag.name.ilike(f"%{query}%")
             ))
         
-        # Apply filters
+        # SH: Apply filters
         if file_types:
             stmt = stmt.where(KnowledgeBase.format.in_(file_types))
         if start_date:
@@ -639,15 +638,15 @@ async def search_knowledge(
         if tag_id:
             stmt = stmt.join(knowledge_tag).where(knowledge_tag.c.tag_id == tag_id)
         
-        # Get total count
+        # SH: Get total count
         count_query = select(func.count()).select_from(stmt.subquery())
         total_result = await db.execute(count_query)
         total = total_result.scalar_one()
         
-        # Apply pagination
+        # SH: Apply pagination
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         
-        # Execute query
+        # SH: Execute query
         result = await db.execute(stmt)
         knowledge_bases = result.scalars().unique().all()
         

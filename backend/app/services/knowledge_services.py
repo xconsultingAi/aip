@@ -370,10 +370,10 @@ async def process_text(
     except Exception as e:
         logger.error(f"Text Processing Error: {str(e)}", exc_info=True)
         raise
+    
+# SH: Category Services
 
-# ==================== CATEGORY AND TAGGING SERVICES ====================
-
-# Category Services
+# SH: Create a new category and return it after validation
 async def create_category_service(
     db: AsyncSession,
     category_data: CategoryCreate
@@ -389,6 +389,7 @@ async def create_category_service(
             detail=f"Failed to create category: {str(e)}"
         )
 
+# SH: Get a specific category by ID for the given organization
 async def get_category_service(
     db: AsyncSession,
     category_id: int,
@@ -399,6 +400,7 @@ async def get_category_service(
         raise HTTPException(status_code=404, detail="Category not found")
     return CategoryOut.model_validate(category)
 
+# SH: Get all categories for the given organization
 async def get_categories_service(
     db: AsyncSession,
     organization_id: int
@@ -406,6 +408,7 @@ async def get_categories_service(
     categories = await get_categories(db, organization_id)
     return [CategoryOut.model_validate(c) for c in categories]
 
+# SH: Get category tree structure (parent-child hierarchy)
 async def get_category_tree_service(
     db: AsyncSession,
     organization_id: int
@@ -413,6 +416,7 @@ async def get_category_tree_service(
     tree = await get_category_tree(db, organization_id)
     return [CategoryTree.model_validate(c) for c in tree]
 
+# SH: Update a category by ID with given update data
 async def update_category_service(
     db: AsyncSession,
     category_id: int,
@@ -422,6 +426,7 @@ async def update_category_service(
     category = await update_category(db, category_id, organization_id, update_data)
     return CategoryOut.model_validate(category)
 
+# SH: Delete a category by ID
 async def delete_category_service(
     db: AsyncSession,
     category_id: int,
@@ -429,7 +434,9 @@ async def delete_category_service(
 ) -> bool:
     return await delete_category(db, category_id, organization_id)
 
-# Tag Services
+# SH: Tag Services
+
+# SH: Create a new tag and return it after validation
 async def create_tag_service(
     db: AsyncSession,
     tag_data: TagCreate
@@ -445,6 +452,7 @@ async def create_tag_service(
             detail=f"Failed to create tag: {str(e)}"
         )
 
+# SH: Get a tag by ID for the given organization
 async def get_tag_service(
     db: AsyncSession,
     tag_id: int,
@@ -455,6 +463,7 @@ async def get_tag_service(
         raise HTTPException(status_code=404, detail="Tag not found")
     return TagOut.model_validate(tag)
 
+# SH: Get list of tags for the organization, optional search filter
 async def get_tags_service(
     db: AsyncSession,
     organization_id: int,
@@ -463,6 +472,7 @@ async def get_tags_service(
     tags = await get_tags(db, organization_id, search)
     return [TagOut.model_validate(t) for t in tags]
 
+# SH: Update the name of a tag by ID
 async def update_tag_service(
     db: AsyncSession,
     tag_id: int,
@@ -472,6 +482,7 @@ async def update_tag_service(
     tag = await update_tag(db, tag_id, organization_id, name)
     return TagOut.model_validate(tag)
 
+# SH: Delete a tag by ID
 async def delete_tag_service(
     db: AsyncSession,
     tag_id: int,
@@ -479,6 +490,7 @@ async def delete_tag_service(
 ) -> bool:
     return await delete_tag(db, tag_id, organization_id)
 
+# SH: Update categories and tags assigned to a knowledge base item
 async def update_knowledge_categories_tags_service(
     db: AsyncSession,
     knowledge_id: int,
@@ -502,6 +514,7 @@ async def update_knowledge_categories_tags_service(
             detail=f"Failed to update knowledge base: {str(e)}"
         )
 
+# SH: Get knowledge base items filtered by category, including subcategories optionally
 async def get_knowledge_by_category_service(
     db: AsyncSession,
     organization_id: int,
@@ -522,6 +535,7 @@ async def get_knowledge_by_category_service(
             detail=f"Failed to get knowledge bases: {str(e)}"
         )
 
+# SH: Get knowledge base items associated with a specific tag
 async def get_knowledge_by_tag_service(
     db: AsyncSession,
     organization_id: int,
@@ -539,11 +553,11 @@ async def get_knowledge_by_tag_service(
             status_code=500,
             detail=f"Failed to get knowledge bases: {str(e)}"
         )
-        
-# Add snippet generation function
+
+# SH: Generate a text snippet from vector store based on query for a knowledge item
 def generate_snippet(query: str, knowledge_base_id: int, organization_id: int) -> str:
     try:
-        # Search vector store for most relevant chunk
+        # SH: Search vector store for most relevant chunk
         results = vector_store.similarity_search(
             query=query,
             k=1,
@@ -554,7 +568,7 @@ def generate_snippet(query: str, knowledge_base_id: int, organization_id: int) -
         )
         
         if results:
-            # Extract and truncate snippet
+            # SH: Return first 200 chars as snippet
             content = results[0].page_content
             return (content[:200] + '...') if len(content) > 200 else content
         
@@ -563,13 +577,14 @@ def generate_snippet(query: str, knowledge_base_id: int, organization_id: int) -
     except Exception as e:
         logger.error(f"Snippet generation failed: {str(e)}")
         return f"Document related to '{query}'"
-# Add new search service
+
+# SH: Perform knowledge base search based on filters, generate highlighted snippets
 async def search_knowledge_service(
     db: AsyncSession,
     search_request: KnowledgeSearchRequest,
     organization_id: int
 ) -> dict:
-    # Call repository function
+    # SH: Search knowledge base using filters like query, file types, dates, category, tags
     knowledge_bases, total = await search_knowledge(
         db=db,
         query=search_request.query,
@@ -581,11 +596,9 @@ async def search_knowledge_service(
         tag_id=search_request.tag_id
     )
     
-    # Format results with snippets
+    # SH: Format results with content snippets and highlight terms
     results = []
     for kb in knowledge_bases:
-        # In a real implementation, you would generate actual content snippets
-        # For this example, we're using a placeholder
         snippet = generate_snippet(
             query=search_request.query,
             knowledge_base_id=kb.id,
@@ -613,3 +626,4 @@ async def search_knowledge_service(
         "results": results,
         "total": total
     }
+

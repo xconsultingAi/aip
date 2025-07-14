@@ -21,7 +21,6 @@ knowledge_tag = Table(
     Column('tag_id', Integer, ForeignKey('tags.id', ondelete="CASCADE"), primary_key=True)
 )
 
-
 #SH: Base model for all knowledge bases
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
