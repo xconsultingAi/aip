@@ -5,7 +5,7 @@ from pydantic import BaseModel
 class UserBase(BaseModel):
     user_id: str
 
-# Response model for User
+# SH: Response model for User
 class UserOut(UserBase):
     id: int
     organization_id: int | None = None 

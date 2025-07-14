@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from app.core.config import settings
 from app.db.models.agent import Agent as AgentDB
 from app.db.models.user import User
 from app.models.agent import AgentCreate, AgentConfigSchema
@@ -269,23 +270,57 @@ async def update_agent_knowledge(
     await db.commit()
     
 def validate_agent_config(config: AgentConfigSchema):
-    # Validate context window size
+    # SH: Validate context window size
     if config.context_window_size < 500 or config.context_window_size > 8000:
         raise HTTPException(
             status_code=400,
             detail="Context window size must be between 500 and 8000 tokens"
         )
     
-    # Validate response throttling
+    # SH: Validate response throttling
     if config.response_throttling < 0 or config.response_throttling > 5:
         raise HTTPException(
             status_code=400,
             detail="Response throttling must be between 0 and 5 seconds"
         )
     
-    # Validate max retries
+    # SH: Validate max retries
     if config.max_retries < 0 or config.max_retries > 5:
         raise HTTPException(
             status_code=400,
             detail="Max retries must be between 0 and 5"
         )
+
+def validate_personality_traits(traits: List[str]):
+    # Validate personality traits against allowed options
+    allowed_traits = settings.PERSONALITY_TRAITS
+    invalid = [t for t in traits if t not in allowed_traits]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid personality traits: {', '.join(invalid)}. Allowed: {', '.join(allowed_traits)}"
+        )
+        
+async def generate_personality_preview(
+    db: AsyncSession,
+    agent_id: int,
+    traits: List[str],
+    custom_prompt: str,
+    preview_prompt: str,
+    user_id:str
+) -> str:
+    # SH:Generate personality preview response
+    # Fetch agent
+    agent = await get_agent(db, agent_id, user_id)
+    
+    # SH: Build system prompt
+    traits_str = ", ".join(traits) if traits else "default"
+    system_prompt = f"You are an AI assistant with {traits_str} personality traits."
+    if custom_prompt:
+        system_prompt += f"\nAdditional guidelines: {custom_prompt}"
+    
+    # SH: Generate preview - simplified example
+    preview_response = f"Preview response for '{preview_prompt}' with traits: {traits_str}"
+    
+    # SH: Return preview response
+    return preview_response

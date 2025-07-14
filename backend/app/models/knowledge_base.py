@@ -13,7 +13,7 @@ class KnowledgeBaseCreate(BaseModel):
     format: str = Field(..., description="File format (pdf, docx, txt, etc.)") 
     organization_id: int
 
-# Category Models
+# SH: Category Models
 class CategoryBase(BaseModel):
     name: str = Field(..., max_length=100)
     description: Optional[str] = None
@@ -35,7 +35,7 @@ class CategoryTree(CategoryOut):
     
     model_config = ConfigDict(from_attributes=True)
 
-# Tag Models
+# SH: Tag Models
 class TagBase(BaseModel):
     name: str = Field(..., max_length=50)
 
@@ -67,7 +67,7 @@ class KnowledgeBaseOut(KnowledgeBaseCreate):
     def handle_async_relations(cls, data: Any) -> Any:
         if isinstance(data, dict):
             return data
-        # Handle SQLAlchemy model instance
+        # SH: Handle SQLAlchemy model instance
         if hasattr(data, 'tags'):
             tags = [tag for tag in data.tags] if data.tags else []
             return {
@@ -137,7 +137,7 @@ class KnowledgeUpdate(BaseModel):
     category_id: Optional[int] = None
     tag_ids: Optional[List[int]] = None
     
-# Add new models for search
+# SH: Add new models for search
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=255, description="Search keywords")
     file_types: Optional[List[str]] = Field(None, description="Filter by file types")

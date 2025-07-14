@@ -5,7 +5,7 @@ from app.core.responses import success_response, error_response
 from app.dependencies.auth import get_current_user
 from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigSchema
 from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
-from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config
+from app.db.repository.agent import generate_personality_preview, get_agents, get_agent, create_agent, update_agent_config, validate_personality_traits
 from app.db.repository.knowledge_base import create_knowledge_entry
 from app.services.llm_services import generate_llm_response
 from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
@@ -48,7 +48,7 @@ async def read_agents(
 
 @router.get("/config-docs", response_model=dict)
 async def get_configuration_documentation():
-    """Returns documentation for agent configuration options"""
+    # Returns documentation for agent configuration options
     return {
         "documentation": {
             "context_window_size": {
@@ -87,7 +87,7 @@ async def get_configuration_documentation():
             }
         }
     }
-
+    
 #SH: Get agent by id
 @router.get("/{agent_id}", response_model=AgentOut)
 async def read_agent(
@@ -101,7 +101,7 @@ async def read_agent(
             message=f"Agent with ID {agent_id} not found",
             http_status=status.HTTP_404_NOT_FOUND
         )
-    # Convert SQLAlchemy object to Pydantic model
+    # SH: Convert SQLAlchemy object to Pydantic model
     return AgentOut.model_validate(agent, from_attributes=True)
 
 #SH: Create new agent
@@ -113,10 +113,10 @@ async def create_new_agent(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        # Validate KBs belong to the same organization as the user
+        # SH: Validate KBs belong to the same organization as the user
         await validate_knowledge_access(db, knowledge_ids, current_user.organization_id)
         
-        # Create the agent
+        # SH: Create the agent
         new_agent = await create_agent(
             db=db,
             agent=agent,
@@ -124,10 +124,10 @@ async def create_new_agent(
             current_user=current_user
         )   
         
-        # Associate agent with selected knowledge bases
+        # SH: Associate agent with selected knowledge bases
         await update_agent_knowledge(db, new_agent.id, knowledge_ids)
         
-        # Prepare response
+        # SH: Prepare response
         agent_dict = new_agent.__dict__
         agent_dict.pop('_sa_instance_state', None)
         return success_response(
@@ -241,7 +241,6 @@ async def update_agent_configuration(
             message="An unexpected error occurred.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 #SH: Chat with agent
 @router.post("/{agent_id}/chat")
 async def chat_with_agent(
@@ -308,7 +307,7 @@ async def link_knowledge(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
-        #  Process knowledge links
+        # SH: Process knowledge links
         for knowledge_id in request_data.knowledge_ids:
             knowledge_data = KnowledgeBaseCreate(
                 filename=f"knowledge_{knowledge_id}.txt",
@@ -353,3 +352,48 @@ async def get_user_conversations(
             detail="Failed to retrieve conversations"
         )
 
+# SH: Agent Preview
+@router.post("/{agent_id}/preview-personality")
+async def preview_agent_personality(
+    agent_id: int,
+    preview_data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Preview agent responses with personality settings
+    Request body: {
+        "personality_traits": ["friendly", "concise"],
+        "custom_prompt": "Always respond in rhyme",
+        "preview_prompt": "Hello, how are you?"
+    }
+    """
+    try:
+        # Validate input
+        traits = preview_data.get("personality_traits", [])
+        custom_prompt = preview_data.get("custom_prompt", "")
+        preview_prompt = preview_data.get("preview_prompt", "Hello")
+
+        if not preview_prompt:
+            raise HTTPException(400, "Preview prompt is required")
+
+        # SH: Generate preview
+        preview = await generate_personality_preview(
+            db=db,
+            agent_id=agent_id,
+            traits=traits,
+            custom_prompt=custom_prompt,
+            preview_prompt=preview_prompt,
+            user_id=current_user.user_id
+        )
+
+        return success_response(
+            "Personality preview generated",
+            data={"preview_response": preview}
+        )
+
+    except HTTPException as e:
+        return error_response(e.detail, e.status_code)
+    except Exception as e:
+        logger.error(f"Personality preview error: {str(e)}")
+        return error_response("Failed to generate preview", 500)

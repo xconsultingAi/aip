@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     ALLOWED_TEXT_FORMATS: List[str] = ["text", "article"]
     TEXT_PDFS_SUBDIR: str = "text_pdfs"
     MAX_TEXT_LENGTH: int = 10_000  # 10k characters 
+    
+    #SH: Personality trait options
+    PERSONALITY_TRAITS: List[str] = ["formal", "friendly", "concise", "professional", "enthusiastic"]
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"
