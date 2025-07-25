@@ -70,7 +70,7 @@ class OpenAIClient:
         }
 
         #SH: Use default GPT-4 pricing if the model is unknown
-        model_pricing = pricing.get(model, pricing["gpt-4"])
+        model_pricing = pricing.get(model, pricing["gpt-3.5-turbo"])
 
         #SH: Calculate total cost = input cost + output cost
         return (usage.prompt_tokens * model_pricing["input"]) + (usage.completion_tokens * model_pricing["output"])

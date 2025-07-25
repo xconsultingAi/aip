@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.db.models.chat import ChatMessage
 from app.db.models.chat import Conversation
 from fastapi import HTTPException
+from app.services.dashboard_ws import trigger_conversation_update
 
 #SH: Create conversation
 async def create_conversation(db: AsyncSession, conversation_data: dict):
@@ -12,6 +13,11 @@ async def create_conversation(db: AsyncSession, conversation_data: dict):
     db.add(db_conv)
     await db.commit()
     await db.refresh(db_conv)
+    
+    # Calculate new conversation count
+    count = await get_user_conversation_count(db, db_conv.user_id)
+    await trigger_conversation_update(count, db_conv.user_id, db_conv.organization_id)
+    
     return db_conv
 
 #SH: Update conversation title
@@ -26,18 +32,31 @@ async def update_conversation_title(db: AsyncSession, conversation_id: int, new_
 
 #SH: Delete conversation
 async def delete_conversation(db: AsyncSession, conversation_id: int):
-    #SH: Delete messages first
-    await db.execute(
-        delete(ChatMessage)
-        .where(ChatMessage.conversation_id == conversation_id)
-    )
-    #SH: Then delete conversation
+    # Get conversation before deletion
     result = await db.execute(
-        delete(Conversation)
-        .where(Conversation.id == conversation_id)
+        select(Conversation).where(Conversation.id == conversation_id)
     )
-    await db.commit()
-    return result.rowcount
+    db_conv = result.scalars().first()
+    
+    if db_conv:
+        # Delete messages first
+        await db.execute(
+            delete(ChatMessage)
+            .where(ChatMessage.conversation_id == conversation_id)
+        )
+        # Then delete conversation
+        await db.execute(
+            delete(Conversation)
+            .where(Conversation.id == conversation_id)
+        )
+        await db.commit()
+        
+        # Calculate new conversation count
+        count = await get_user_conversation_count(db, db_conv.user_id)
+        await trigger_conversation_update(count, db_conv.user_id, db_conv.organization_id)
+        
+        return 1
+    return 0
 
 #SH: Create chat message
 async def create_chat_message(db: AsyncSession, message_data: dict):

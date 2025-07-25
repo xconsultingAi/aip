@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from R1Sprint1.backend.app.main import app
+from backend.app.main import app
 
 client = TestClient(app)
 

@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 from app.core.youtube_processer import YouTubeProcessor
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
+from app.services.dashboard_ws import trigger_kb_update
+from app.models.user import UserOut
 
 # SH: This file will contain all the database operations related to the Knowledge base Models
 
@@ -19,8 +21,8 @@ async def create_knowledge_entry(
     knowledge_data: KnowledgeBaseCreate,
     file_size: int,
     chunk_count: int,
-    knowledge_ids: Optional[List[int]] = None
-) -> KnowledgeBase:  # Change return type to KnowledgeBase
+    user: Optional[UserOut] = None
+) -> KnowledgeBase:
     if not isinstance(knowledge_data, KnowledgeBaseCreate):
         raise TypeError("knowledge_data must be a KnowledgeBaseCreate instance")
 
@@ -34,14 +36,18 @@ async def create_knowledge_entry(
             organization_id=knowledge_data.organization_id,
             file_size=file_size,
             chunk_count=chunk_count,
-            source_type="file"  # Make sure this matches your model
+            source_type="file"
         )
 
         db.add(db_knowledge)
         await db.commit()
         await db.refresh(db_knowledge)
+
+        if user:
+            # Calculate new KB count
+            count = await get_organization_knowledge_count(db, user.organization_id)
+            await trigger_kb_update(count, user.organization_id)
         
-        # Return the SQLAlchemy model object
         return db_knowledge
 
     except Exception as e:
@@ -56,7 +62,6 @@ async def get_organization_knowledge_bases(
     db: AsyncSession, 
     organization_id: int
 ) -> list[KnowledgeBase]:
-    # SH: Retrieve all knowledge bases belonging to a specific organization
     result = await db.execute(
         select(KnowledgeBase)
         .where(KnowledgeBase.organization_id == organization_id)
@@ -68,7 +73,6 @@ async def get_organization_knowledge_count(
     db: AsyncSession, 
     organization_id: int
 ) -> int:
-    # SH: Get count of knowledge bases belonging to a specific organization
     result = await db.execute(
         select(func.count(KnowledgeBase.id))
         .where(KnowledgeBase.organization_id == organization_id)
@@ -88,11 +92,11 @@ async def create_url_knowledge(
     chunk_count: int,
     format: str,
     crawl_depth: int = 1,
-    include_links: bool = False
+    include_links: bool = False,
+    user: Optional[UserOut] = None
 ) -> URLKnowledge:
     try:
         domain = urlparse(url).netloc.replace('www.', '')
-        #SH: Create a new URLKnowledge object
         url_knowledge = URLKnowledge(
             name=name,
             filename=filename,
@@ -109,11 +113,17 @@ async def create_url_knowledge(
             file_path=file_path,
             domain_name=domain
         )
-        #SH: Add the URLKnowledge object to the database
+        
         db.add(url_knowledge)
         await db.commit()
         await db.refresh(url_knowledge)
+        
+        if user:
+            count = await get_organization_knowledge_count(db, user.organization_id)
+            await trigger_kb_update(count, user.organization_id)
+        
         return url_knowledge
+    
     except Exception as e:
         await db.rollback()
         raise HTTPException(
@@ -127,7 +137,6 @@ async def get_agent_count_for_knowledge(
     kb_id: int, 
     organization_id: int
 ) -> int:
-    # SH: Get count of agents linked to a knowledge base
     kb_exists = await db.execute(
         select(KnowledgeBase)
         .where(
@@ -135,14 +144,13 @@ async def get_agent_count_for_knowledge(
             KnowledgeBase.organization_id == organization_id
         )
     )
-    #SH: Check if the knowledge base exists
+    
     if not kb_exists.scalar_one_or_none():
         raise HTTPException(
             status_code=404,
             detail="Knowledge base not found in your organization"
         )
     
-    #SH: Count linked agents
     agent_count = await db.execute(
         select(func.count(agent_knowledge.c.agent_id))
         .where(agent_knowledge.c.knowledge_id == kb_id)
@@ -154,7 +162,6 @@ async def get_knowledge_format_counts(
     db: AsyncSession,
     organization_id: int
 ) -> List[Dict[str, Any]]:
-    # SH: Get count of knowledge bases grouped by format for a specific organization
     result = await db.execute(
         select(
             KnowledgeBase.format,
@@ -174,13 +181,13 @@ async def create_youtube_knowledge(
     file_path: str,
     transcript: str,
     filename: str,
-    format: Optional[str] = None
+    format: Optional[str] = None,
+    user: Optional[UserOut] = None
 ) -> YouTubeKnowledge:
     try:
-        #SH: Process the youtube video and get the transcript
         processor = YouTubeProcessor()
         video_id = processor.extract_video_id(video_url)
-        #SH: Check for existing video
+        
         existing = await db.execute(
             select(YouTubeKnowledge)
             .where(YouTubeKnowledge.video_id == video_id)
@@ -188,7 +195,6 @@ async def create_youtube_knowledge(
         if existing.scalar_one_or_none():
             raise ValueError(f"YouTube video {video_id} already exists")
 
-        #SH: Explicitly define fields to avoid passing unexpected ones
         youtube_knowledge_data = {
             "name": name,
             "filename": filename,
@@ -203,12 +209,15 @@ async def create_youtube_knowledge(
             "transcript_length": len(transcript),
             "file_path": file_path
         }
-        #SH: Create a new YouTubeKnowledge object
+        
         youtube_knowledge = YouTubeKnowledge(**youtube_knowledge_data)
-        #SH: Add the YouTubeKnowledge object to the database
         db.add(youtube_knowledge)
         await db.commit()
         await db.refresh(youtube_knowledge)
+        
+        if user:
+            await trigger_kb_update(db, user.organization_id)
+            
         return youtube_knowledge
     except ValueError as ve:
         raise ve
@@ -228,10 +237,10 @@ async def create_text_knowledge(
     file_path: str,
     filename: str,
     content_hash: str,
-    format: str
+    format: str,
+    user: Optional[UserOut] = None
 ) -> TextKnowledge:
     try:
-        #SH: Create a new TextKnowledge object
         text_knowledge = TextKnowledge(
             name=name,
             filename=filename,
@@ -239,15 +248,19 @@ async def create_text_knowledge(
             format=format,
             organization_id=organization_id,
             file_size=len(text_content.encode('utf-8')),
-            chunk_count=0,  # Will be updated after processing
+            chunk_count=0,
             source_type="text",
             content_hash=content_hash,
             file_path=file_path
         )
-        #SH: Add the TextKnowledge object to the database
+        
         db.add(text_knowledge)
         await db.commit()
         await db.refresh(text_knowledge)
+        
+        if user:
+            await trigger_kb_update(db, user.organization_id)
+            
         return text_knowledge
     except Exception as e:
         await db.rollback()
@@ -267,8 +280,42 @@ async def get_agent_count_for_knowledge_base(
     )
     return result.scalar_one()
 
-# SH: Category CRUD operations
+async def delete_knowledge_base(
+    db: AsyncSession,
+    kb_id: int,
+    user: UserOut
+) -> None:
+    try:
+        result = await db.execute(
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.id == kb_id,
+                KnowledgeBase.organization_id == user.organization_id
+            )
+        )
+        kb = result.scalar_one_or_none()
+        
+        if not kb:
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge base not found in your organization"
+            )
+            
+        await db.delete(kb)
+        await db.commit()
+        count = await get_organization_knowledge_count(db, user.organization_id)
+        await trigger_kb_update(count, user.organization_id)
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete knowledge base: {str(e)}"
+        )
 
+# ==================== CATEGORY AND TAGGING SYSTEM ====================
+
+# Category CRUD operations
 async def create_category(db: AsyncSession, category_data: dict):
     try:
         category = Category(**category_data)
@@ -302,7 +349,7 @@ async def get_categories(db: AsyncSession, organization_id: int):
     return result.scalars().all()
 
 async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict]:
-    # SH: Get all categories with their children loaded
+    # Get all categories with their children loaded
     result = await db.execute(
         select(Category)
         .where(Category.organization_id == organization_id)
@@ -313,7 +360,7 @@ async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict
     )
     categories = result.scalars().all()
 
-    # SH: Build tree structure with all required fields
+    # Build tree structure with all required fields
     def build_tree(category: Category) -> dict:
         return {
             "id": category.id,
@@ -326,7 +373,7 @@ async def get_category_tree(db: AsyncSession, organization_id: int) -> List[dict
             "children": [build_tree(child) for child in category.children]
         }
 
-    # SH: Only return root categories (where parent_id is None)
+    # Only return root categories (where parent_id is None)
     tree = [build_tree(c) for c in categories if c.parent_id is None]
     return tree
 
@@ -347,7 +394,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    # SH: Check if category has children
+    # Check if category has children
     result = await db.execute(
         select(func.count(Category.id))
         .where(Category.parent_id == category_id)
@@ -360,7 +407,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
             detail="Cannot delete category with subcategories. Move or delete subcategories first."
         )
     
-    # SH: Check if category has knowledge bases
+    # Check if category has knowledge bases
     result = await db.execute(
         select(func.count(KnowledgeBase.id))
         .where(KnowledgeBase.category_id == category_id)
@@ -377,7 +424,7 @@ async def delete_category(db: AsyncSession, category_id: int, organization_id: i
     await db.commit()
     return True
 
-# SH: Tag CRUD operations
+# Tag CRUD operations
 async def create_tag(db: AsyncSession, tag_data: dict):
     try:
         # Check if tag with same name already exists for organization
@@ -434,7 +481,7 @@ async def update_tag(db: AsyncSession, tag_id: int, organization_id: int, name: 
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     
-    # SH: Check if new name already exists
+    # Check if new name already exists
     existing = await db.execute(
         select(Tag)
         .where(
@@ -459,7 +506,7 @@ async def delete_tag(db: AsyncSession, tag_id: int, organization_id: int):
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     
-    # SH: Check if tag is used by any knowledge base
+    # Check if tag is used by any knowledge base
     result = await db.execute(
         select(func.count(knowledge_tag.c.knowledge_id))
         .where(knowledge_tag.c.tag_id == tag_id)
@@ -482,7 +529,7 @@ async def update_knowledge_categories_tags(
     organization_id: int,
     update_data: KnowledgeUpdate
 ):
-    # SH: Fetch knowledge base
+    # Fetch knowledge base
     result = await db.execute(
         select(KnowledgeBase)
         .options(
@@ -499,7 +546,7 @@ async def update_knowledge_categories_tags(
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
 
-    # SH: Update category if provided
+    # Update category if provided
     if update_data.category_id is not None:
         if update_data.category_id == 0:  # Remove category
             kb.category = None
@@ -515,7 +562,7 @@ async def update_knowledge_categories_tags(
                 raise HTTPException(status_code=404, detail="Category not found")
             kb.category = category
 
-    # SH: Update tags if provided
+    # Update tags if provided
     if update_data.tag_ids is not None:
         result = await db.execute(
             select(Tag).where(
@@ -545,13 +592,13 @@ async def get_knowledge_by_category(
     query = select(KnowledgeBase).where(
         KnowledgeBase.organization_id == organization_id
     ).options(
-        selectinload(KnowledgeBase.category),
-        selectinload(KnowledgeBase.tags)
+        selectinload(KnowledgeBase.category),  # Eager load category
+        selectinload(KnowledgeBase.tags)       # Eager load tags
     )
     
     if category_id is not None:
         if include_subcategories:
-            # SH: Get all subcategory IDs
+            # Get all subcategory IDs
             CategoryAlias = aliased(Category)
             subq = (
                 select(CategoryAlias.id)
@@ -596,7 +643,7 @@ async def get_knowledge_by_tag(
     )
     return result.scalars().all()
 
-# SH: search function
+# Add new search function
 async def search_knowledge(
     db: AsyncSession,
     query: str,
@@ -610,13 +657,13 @@ async def search_knowledge(
     page_size: int = 10
 ) -> tuple[list, int]:
     try:
-        # SH: Base query
+        # Base query
         stmt = select(KnowledgeBase).options(
             selectinload(KnowledgeBase.category),
             selectinload(KnowledgeBase.tags)
         ).where(KnowledgeBase.organization_id == organization_id)
         
-        # SH: Keyword search across name, category, and tags
+        # Keyword search across name, category, and tags
         if query:
             stmt = stmt.join(KnowledgeBase.category, isouter=True)
             stmt = stmt.join(KnowledgeBase.tags, isouter=True)
@@ -626,7 +673,7 @@ async def search_knowledge(
                 Tag.name.ilike(f"%{query}%")
             ))
         
-        # SH: Apply filters
+        # Apply filters
         if file_types:
             stmt = stmt.where(KnowledgeBase.format.in_(file_types))
         if start_date:
@@ -638,15 +685,15 @@ async def search_knowledge(
         if tag_id:
             stmt = stmt.join(knowledge_tag).where(knowledge_tag.c.tag_id == tag_id)
         
-        # SH: Get total count
+        # Get total count
         count_query = select(func.count()).select_from(stmt.subquery())
         total_result = await db.execute(count_query)
         total = total_result.scalar_one()
         
-        # SH: Apply pagination
+        # Apply pagination
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
         
-        # SH: Execute query
+        # Execute query
         result = await db.execute(stmt)
         knowledge_bases = result.scalars().unique().all()
         

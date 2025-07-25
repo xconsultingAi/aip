@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.core.config import settings
@@ -10,6 +11,7 @@ from sqlalchemy.orm import load_only
 from app.db.models.knowledge_base import agent_knowledge
 from app.db.models.knowledge_base import KnowledgeBase  
 from sqlalchemy.sql.expression import delete, insert
+from app.services.dashboard_ws import trigger_agent_update
 from typing import List
 import logging
 from app.db.database import SessionLocal
@@ -103,6 +105,7 @@ async def create_agent(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User have not any organization. Please Create First organization."
         )
+
     try:
         db_agent = AgentDB(
             name=agent.name,
@@ -120,6 +123,7 @@ async def create_agent(
         db.add(db_agent)
         await db.commit()
         await db.refresh(db_agent)
+        await trigger_agent_update(db, db_agent.user_id, db_agent.organization_id)
         return db_agent
 
     except SQLAlchemyError as e:
@@ -270,25 +274,38 @@ async def update_agent_knowledge(
     await db.commit()
     
 def validate_agent_config(config: AgentConfigSchema):
-    # SH: Validate context window size
+    # Validate context window size
     if config.context_window_size < 500 or config.context_window_size > 8000:
         raise HTTPException(
             status_code=400,
             detail="Context window size must be between 500 and 8000 tokens"
         )
     
-    # SH: Validate response throttling
+    # Validate response throttling
     if config.response_throttling < 0 or config.response_throttling > 5:
         raise HTTPException(
             status_code=400,
             detail="Response throttling must be between 0 and 5 seconds"
         )
     
-    # SH: Validate max retries
+    # Validate max retries
     if config.max_retries < 0 or config.max_retries > 5:
         raise HTTPException(
             status_code=400,
             detail="Max retries must be between 0 and 5"
+        )
+        
+#SH: Get count of all agents for a specific user
+async def get_agent_count(db: AsyncSession, user_id: str) -> int:
+    try:
+        result = await db.execute(
+            select(func.count()).select_from(AgentDB).where(AgentDB.user_id == user_id)
+        )
+        return result.scalar_one()
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="RA04: Failed to retrieve agent count"
         )
 
 def validate_personality_traits(traits: List[str]):
