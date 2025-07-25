@@ -5,9 +5,9 @@ from app.core.responses import success_response, error_response
 from app.dependencies.auth import get_current_user
 from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigSchema
 from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
-from app.db.repository.agent import generate_personality_preview, get_agents, get_agent, create_agent, update_agent_config, validate_personality_traits
+from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config, get_agent_count
 from app.db.repository.knowledge_base import create_knowledge_entry
-from app.services.llm_services import generate_llm_response
+from app.services.llm_services import generate_llm_response, generate_personality_preview
 from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -16,7 +16,6 @@ from app.core.exceptions import llm_service_error, invalid_api_key_error
 from typing import List
 # from app.services.llm_services import LLMService
 from sqlalchemy import select
-from typing import List
 import re
 from app.db.models.agent import Agent
 from app.db.models.knowledge_base import KnowledgeBase
@@ -48,7 +47,7 @@ async def read_agents(
 
 @router.get("/config-docs", response_model=dict)
 async def get_configuration_documentation():
-    # Returns documentation for agent configuration options
+    """Returns documentation for agent configuration options"""
     return {
         "documentation": {
             "context_window_size": {
@@ -87,7 +86,7 @@ async def get_configuration_documentation():
             }
         }
     }
-    
+
 #SH: Get agent by id
 @router.get("/{agent_id}", response_model=AgentOut)
 async def read_agent(
@@ -101,7 +100,7 @@ async def read_agent(
             message=f"Agent with ID {agent_id} not found",
             http_status=status.HTTP_404_NOT_FOUND
         )
-    # SH: Convert SQLAlchemy object to Pydantic model
+    # Convert SQLAlchemy object to Pydantic model
     return AgentOut.model_validate(agent, from_attributes=True)
 
 #SH: Create new agent
@@ -113,10 +112,10 @@ async def create_new_agent(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        # SH: Validate KBs belong to the same organization as the user
+        # Validate KBs belong to the same organization as the user
         await validate_knowledge_access(db, knowledge_ids, current_user.organization_id)
         
-        # SH: Create the agent
+        # Create the agent
         new_agent = await create_agent(
             db=db,
             agent=agent,
@@ -124,10 +123,10 @@ async def create_new_agent(
             current_user=current_user
         )   
         
-        # SH: Associate agent with selected knowledge bases
+        # Associate agent with selected knowledge bases
         await update_agent_knowledge(db, new_agent.id, knowledge_ids)
         
-        # SH: Prepare response
+        # Prepare response
         agent_dict = new_agent.__dict__
         agent_dict.pop('_sa_instance_state', None)
         return success_response(
@@ -241,6 +240,7 @@ async def update_agent_configuration(
             message="An unexpected error occurred.",
             http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 #SH: Chat with agent
 @router.post("/{agent_id}/chat")
 async def chat_with_agent(
@@ -307,7 +307,7 @@ async def link_knowledge(
                 detail=f"Agent with ID {agent_id} not found"
             )
 
-        # SH: Process knowledge links
+        #  Process knowledge links
         for knowledge_id in request_data.knowledge_ids:
             knowledge_data = KnowledgeBaseCreate(
                 filename=f"knowledge_{knowledge_id}.txt",
@@ -351,6 +351,19 @@ async def get_user_conversations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve conversations"
         )
+
+#SH: Get count of all agents for a specific user        
+@router.get("/total/agent_count")
+async def get_total_agent_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try: 
+        count = await get_agent_count(db, current_user.user_id)
+        return success_response("Total agents count fetched", {"total_agents": count})
+    except Exception:
+        return error_response("Failed to fetch agent count", status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # SH: Agent Preview
 @router.post("/{agent_id}/preview-personality")

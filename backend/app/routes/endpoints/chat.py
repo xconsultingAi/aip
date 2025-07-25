@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import ConversationOut, ConversationWithMessages, UserConversationCount
 from app.db.repository.chat import delete_conversation, fetch_chat_history,get_conversation, get_conversation_by_id, create_chat_message, update_conversation_title
 from app.db.models.user import User 
+from app.db.repository.chat import get_user_conversation_count as repo_count
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -446,7 +447,6 @@ async def get_user_conversation_count(
     #SH: Get total count of conversations for the current user
     try:
         #SH: Use the repository function with user_id string
-        from app.db.repository.chat import get_user_conversation_count as repo_count
         count = await repo_count(db, current_user.user_id)
         
         return {

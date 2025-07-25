@@ -27,9 +27,10 @@ class AgentConfigSchema(BaseModel):
     # SH: Validation for domain focus
     @validator("domain_focus")
     def validate_domain_focus(cls, value):
-        if not value.replace(" ", "").isalnum():
-            raise ValueError("Domain focus must be alphanumeric")
-        return value.lower()
+        allowed_domains = ["finance", "healthcare", "support"]  # Add predefined list
+        if value.lower() not in allowed_domains:
+            raise ValueError(f"Invalid domain. Allowed: {', '.join(allowed_domains)}")
+        return value
 
 # SH: Base Agent Model
 class AgentBase(BaseModel):
