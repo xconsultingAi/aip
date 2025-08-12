@@ -1,4 +1,4 @@
-from app.core.dashboard_ws import dashboard_ws_manager
+from app.core.dasboard_ws import dashboard_ws_manager
 
 async def trigger_agent_update(agent_count: int, user_id: str, org_id: str):
     stats = {

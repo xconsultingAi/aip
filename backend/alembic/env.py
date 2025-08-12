@@ -4,10 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from alembic import context
 from app.db.database import Base
 from app.db.models.user import User
-from app.db.models.knowledge_base import KnowledgeBase
-from app.db.models.widget import WidgetSession
+from app.db.models.knowledge_base import KnowledgeBase, URLKnowledge, YouTubeKnowledge, TextKnowledge, Category, Tag
+from app.db.models.performance import SystemMetrics, APIMetrics, AlertRules, SystemAlerts
 from app.db.models.agent import Agent
-from app.db.models.chat import ChatMessage
+from app.db.models.chat import ChatMessage, Conversation
+from app.db.models.analytics import ChatMetrics, AgentPerformanceMetrics
+from app.db.models.dashboard_analytics import ReportTemplates
 from app.db.models.organization import Organization  # MJ: Include Organization Model
 from dotenv import load_dotenv
 import os

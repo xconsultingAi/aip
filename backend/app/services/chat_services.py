@@ -1,5 +1,5 @@
 from tenacity import retry, stop_after_attempt, wait_exponential
-from fastapi import WebSocketException, status, HTTPException
+from fastapi import HTTPException, WebSocketException, status
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from app.core.llm import OpenAIClient
 import openai
@@ -13,10 +13,12 @@ from app.db.models.agent import Agent
 import logging
 from sqlalchemy.orm import selectinload
 from app.core.exceptions import network_exception
+from datetime import datetime  
+from app.services.analytics_services import AnalyticsService
 
 logger = logging.getLogger(__name__)
 
-#SH: Retry logic: This function will retry up to 3 times
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -30,15 +32,18 @@ async def process_agent_response(
     db: AsyncSession,
     conversation_id: int
 ) -> dict:
+    # Step 1: Start time for response duration
+    start_time = datetime.utcnow()
+
     try:
-        #SH: Step 1: Rate limit large messages
+        # Step 2: Rate limit large messages
         if len(message) > 1000:
             raise WebSocketException(
                 code=status.WS_1009_MESSAGE_TOO_BIG,
                 reason="Message exceeds 1000 characters"
             )
 
-        #SH: Step 2: Fetch agent and verify access
+        # Step 3: Fetch agent and verify access
         logger.debug(f"Fetching agent {agent_id} for user {user_id} with knowledge bases")
         result = await db.execute(
             select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id).options(selectinload(Agent.knowledge_bases))
@@ -50,8 +55,8 @@ async def process_agent_response(
                 code=status.WS_1008_POLICY_VIOLATION,
                 reason="Agent not found"
             )
-        
-        #SH: Step 3: Validate message sequence
+
+        # Step 4: Validate message sequence
         valid_sequence, last_seq = await validate_message_sequence(db, user_id, agent_id, sequence_id, conversation_id)
         if not valid_sequence:
             raise WebSocketException(
@@ -59,14 +64,14 @@ async def process_agent_response(
                 reason=f"Invalid message sequence. Expected {last_seq + 1}, but received {sequence_id}."
             )
 
-        #SH: Step 4: Create RAG context
+        # Step 5: Create RAG context
         logger.debug(f"Initializing vector store for org {agent.organization_id}")
         vector_store = get_organization_vector_store(agent.organization_id)
         docs = await vector_store.asimilarity_search(message, k=3)
         context = "\n".join([doc.page_content for doc in docs])
         full_prompt = f"Context: {context}\n\nQuestion: {message}"
 
-        #SH: Step 5: Save user message in database
+        # Step 6: Save user message
         await create_chat_message(db, {
             "content": message,
             "sender": "user",
@@ -76,12 +81,7 @@ async def process_agent_response(
             "conversation_id": conversation_id
         })
 
-        #SH: merged config values from agent
-        temperature = agent.config.get("temperature", 0.7)
-        model_name = agent.config.get("model_name", "gpt-4")
-        system_prompt = agent.config.get("system_prompt", "You are a helpful assistant")
-
-        #SH: Step 6: Generate agent response using LLM
+        # Step 7: Generate agent response using LLM
         llm_client = OpenAIClient()
         response = await llm_client.generate(
             model=agent.config.get("model_name", "gpt-4"),
@@ -91,7 +91,11 @@ async def process_agent_response(
             max_tokens=agent.config.get("max_length", 500)
         )
 
-        #SH: Step 7: Save agent's reply in chat history
+        # Calculate response time
+        end_time = datetime.utcnow()
+        response_time_ms = (end_time - start_time).total_seconds() * 1000
+
+        # Step 8: Save agent's reply
         await create_chat_message(db, {
             "content": response["content"],
             "sender": "agent",
@@ -101,24 +105,40 @@ async def process_agent_response(
             "conversation_id": conversation_id
         })
 
-        #SH: Step 8: Return response to be sent to frontend
+        # Step 9: Record analytics
+        await AnalyticsService.record_chat_metric(
+            db=db,
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            organization_id=agent.organization_id,
+            response_time_ms=response_time_ms,
+            message_length=len(message),
+            tokens_used=response.get("usage", {}).get("total_tokens", 0),
+            cost=response.get("cost", 0),
+            knowledge_base_hits=len(docs),
+            model_used=agent.config.get("model_name", "gpt-4")
+        )
+
+        # Step 10: Return response to frontend
         return {
             "content": response["content"],
             "metadata": {
                 "model": agent.config.get("model_name"),
                 "tokens_used": response.get("usage", {}).get("total_tokens", 0),
                 "cost": response.get("cost", 0),
+                "response_time_ms": round(response_time_ms, 2),  # Return response time
                 "sources": await get_knowledge_sources(agent.knowledge_bases),
                 "theme_color": agent.theme_color,
                 "greeting": agent.greeting_message,
                 "is_public": agent.is_public
             }
         }
-    #SH: Handle network errors
+
     except openai.APIConnectionError as e:
         logger.error(f"Network error: {str(e)}")
         raise network_exception("Connection to AI service failed") from e
-    except WebSocketException:  #SH: Handle WebSocket exceptions
+    except WebSocketException:
         raise
     except Exception as e:
         logger.exception(f"Error processing agent message: {str(e)}", exc_info=True)

@@ -84,36 +84,13 @@ class Settings(BaseSettings):
     TEXT_PDFS_SUBDIR: str = "text_pdfs"
     MAX_TEXT_LENGTH: int = 10_000  # 10k characters 
     
-    #SH: Personality Constraints
-    PERSONALITY_TRAITS: List[str] = [
-        "formal", 
-        "friendly", 
-        "concise", 
-        "professional", 
-        "enthusiastic"
-    ]
-    
-    PERSONALITY_PARAM_ADJUSTMENTS: Dict[str, Dict[str, float]] = {
-        "formal": {"temperature": -0.15, "max_tokens_multiplier": 1.0},
-        "friendly": {"temperature": +0.1, "max_tokens_multiplier": 1.2},
-        "concise": {"temperature": 0.0, "max_tokens_multiplier": 0.6},
-        "professional": {"temperature": -0.1, "max_tokens_multiplier": 1.1},
-        "enthusiastic": {"temperature": +0.2, "max_tokens_multiplier": 1.3}
-    }
-
-    PERSONALITY_PROMPT_TEMPLATES: Dict[str, str] = {
-        "formal": "Use professional language and complete sentences.",
-        "friendly": "Respond in warm, conversational tone.",
-        "concise": "Keep responses under 3 sentences.",
-        "professional": "Maintain business-appropriate tone.",
-        "enthusiastic": "Show excitement with positive language."
-    }
+    #SH: Personality trait options
+    PERSONALITY_TRAITS: List[str] = ["formal", "friendly", "concise", "professional", "enthusiastic"]
     ###### END ####
 
     # JWT_SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e"
     # JWT_ALGORITHM: str = "HS256"
-
-
+    
     class Config:
         env_file = ".env"
 
