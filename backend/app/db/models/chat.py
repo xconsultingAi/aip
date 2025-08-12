@@ -15,17 +15,18 @@ class Conversation(Base):
     user_id = Column(String, ForeignKey("users.user_id"))
     agent_id = Column(Integer, ForeignKey("agents.id"))
 
-    # Relationships
+    #SH: Relationships
     user = relationship("User", back_populates="conversations")
     agent = relationship("Agent", back_populates="conversations")
     messages = relationship("ChatMessage", back_populates="conversation", order_by="ChatMessage.sequence_id")
-
+    organization_id = Column(Integer, ForeignKey("organizations.id")) 
+       
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # Core message info
+    #SH: Core message info
     sequence_id = Column(Integer, nullable=False, server_default="1")
     prev_message_hash = Column(String(64))
 
@@ -38,7 +39,7 @@ class ChatMessage(Base):
     delivered = Column(Boolean, default=False)
     read = Column(Boolean, default=False)   
 
-    # Foreign keys / relations
+    #SH: Foreign keys / relations
     user_id = Column(String, ForeignKey("users.user_id"))
     agent_id = Column(Integer, ForeignKey("agents.id"))
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)

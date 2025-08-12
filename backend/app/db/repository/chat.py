@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from app.db.models.chat import ChatMessage
 from app.db.models.chat import Conversation
 from fastapi import HTTPException
-from app.services.dashboard_ws import trigger_conversation_update
+from app.services.dashboard_events import trigger_conversation_update
 
 #SH: Create conversation
 async def create_conversation(db: AsyncSession, conversation_data: dict):

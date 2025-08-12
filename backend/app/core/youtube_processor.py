@@ -1,8 +1,9 @@
-from youtube_transcript_api import YouTubeTranscriptApi
-import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
+import yt_dlp  # type: ignore
 import re
 import logging
-from faster_whisper import WhisperModel
+from faster_whisper import WhisperModel # type: ignore
+import whisper # type: ignore
 from urllib.parse import urlparse, parse_qs
 from typing import Optional, Dict, Tuple
 import tempfile
@@ -10,11 +11,9 @@ import os
 
 logger = logging.getLogger(__name__)
 
-#SH: Process the youtube video and get the transcript   
 class YouTubeProcessor:
     @staticmethod
     def validate_youtube_url(url: str) -> None:
-        #SH: Validate the youtube url
         patterns = [
             r'^(https?://)?(www\.)?youtube\.com/watch\?v=[\w-]{11}',
             r'^(https?://)?youtu\.be/[\w-]{11}',
@@ -23,7 +22,6 @@ class YouTubeProcessor:
             r'^(https?://)?(www\.)?youtube\.com/live/[\w-]{11}',
             r'^(https?://)?(www\.)?youtube\.com/v/[\w-]{11}'
         ]
-        #SH: Check if the url is valid
         if not any(re.search(pattern, url) for pattern in patterns):
             raise ValueError(
                 "Please provide a valid YouTube URL in one of these formats:\n"
@@ -33,7 +31,6 @@ class YouTubeProcessor:
                 "- https://www.youtube.com/shorts/VIDEO_ID"
             )
 
-    #SH: Extract the video id from the url
     @staticmethod
     def extract_video_id(url: str) -> str:
         try:
@@ -69,7 +66,6 @@ class YouTubeProcessor:
             logger.error(f"URL validation failed: {str(e)}")
             raise ValueError("Invalid YouTube URL. Please check the URL format.")
 
-    #SH: Download the audio from the youtube video
     @staticmethod
     def _download_audio(video_id: str) -> str:
         # Step 1: Check video duration first
@@ -109,7 +105,6 @@ class YouTubeProcessor:
             logger.error(f"Failed to download audio: {str(e)}")
             raise ValueError("Could not download video audio")
 
-    #SH: Transcribe the audio
     @staticmethod
     def _transcribe_audio(audio_path: str) -> str:
         try:
@@ -126,10 +121,9 @@ class YouTubeProcessor:
             except:
                 pass
 
-    #SH: Get the transcript
     @staticmethod
     def get_transcript(video_id: str, video_url: str = None) -> Tuple[Optional[str], Optional[str]]:
-        #SH: Fetch transcript with fallback to speech-to-text
+        """Fetch transcript with fallback to speech-to-text"""
         try:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
 
@@ -170,10 +164,12 @@ class YouTubeProcessor:
             logger.warning(f"Transcript error: {error_msg}")
             return None, error_msg
 
-    #SH: Get the transcript with fallback
     @staticmethod
     def get_transcript_with_fallback(video_id: str) -> Tuple[Optional[str], Optional[str]]:
-        #SH: Try to get transcript, fallback to audio transcription if not available
+        """
+        Try to get transcript, fallback to audio transcription if not available
+        Returns: (transcript, error_message)
+        """
         try:
             transcript, error = YouTubeProcessor.get_transcript(video_id)
             if transcript:
@@ -192,10 +188,9 @@ class YouTubeProcessor:
             logger.error(f"Transcript with fallback failed: {str(e)}")
             return None, str(e)
 
-    #SH: Get the video metadata 
     @staticmethod
     def get_video_metadata(video_url: str) -> Dict[str, str]:
-        #SH: Get metadata with yt-dlp
+        """Get metadata with yt-dlp"""
         try:
             ydl_opts = {
                 'quiet': True,

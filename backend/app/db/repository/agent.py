@@ -1,7 +1,6 @@
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.core.config import settings
 from app.db.models.agent import Agent as AgentDB
 from app.db.models.user import User
 from app.models.agent import AgentCreate, AgentConfigSchema
@@ -11,11 +10,11 @@ from sqlalchemy.orm import load_only
 from app.db.models.knowledge_base import agent_knowledge
 from app.db.models.knowledge_base import KnowledgeBase  
 from sqlalchemy.sql.expression import delete, insert
-from app.services.dashboard_ws import trigger_agent_update
-from typing import List
+from typing import List, Optional
 import logging
 from app.db.database import SessionLocal
 from app.db.models.chat import Conversation
+from app.services.dashboard_events import trigger_agent_update
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -308,36 +307,27 @@ async def get_agent_count(db: AsyncSession, user_id: str) -> int:
             detail="RA04: Failed to retrieve agent count"
         )
 
-def validate_personality_traits(traits: List[str]):
-    # Validate personality traits against allowed options
-    allowed_traits = settings.PERSONALITY_TRAITS
-    invalid = [t for t in traits if t not in allowed_traits]
-    if invalid:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid personality traits: {', '.join(invalid)}. Allowed: {', '.join(allowed_traits)}"
+async def get_agents_by_organization(db: AsyncSession, organization_id: int) -> List[AgentDB]:
+    # Get all agents for an organization
+    try:
+        result = await db.execute(
+            select(AgentDB).where(AgentDB.organization_id == organization_id)
         )
-        
-async def generate_personality_preview(
-    db: AsyncSession,
-    agent_id: int,
-    traits: List[str],
-    custom_prompt: str,
-    preview_prompt: str,
-    user_id:str
-) -> str:
-    # SH:Generate personality preview response
-    # Fetch agent
-    agent = await get_agent(db, agent_id, user_id)
+        return result.scalars().all()
+    except Exception as e:
+        return []
     
-    # SH: Build system prompt
-    traits_str = ", ".join(traits) if traits else "default"
-    system_prompt = f"You are an AI assistant with {traits_str} personality traits."
-    if custom_prompt:
-        system_prompt += f"\nAdditional guidelines: {custom_prompt}"
-    
-    # SH: Generate preview - simplified example
-    preview_response = f"Preview response for '{preview_prompt}' with traits: {traits_str}"
-    
-    # SH: Return preview response
-    return preview_response
+async def get_agent_by_id(db: AsyncSession, agent_id: int, organization_id: int) -> Optional[AgentDB]:
+    """Get agent by ID and organization"""
+    try:
+        result = await db.execute(
+            select(AgentDB).where(
+                and_(
+                    AgentDB.id == agent_id,
+                    AgentDB.organization_id == organization_id
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+    except Exception as e:
+        return None

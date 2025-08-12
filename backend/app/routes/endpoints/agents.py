@@ -7,7 +7,7 @@ from app.models.agent import AgentCreate, AgentOut, ALLOWED_MODELS, AgentConfigS
 from app.models.knowledge_base import KnowledgeBaseCreate, KnowledgeLinkRequest
 from app.db.repository.agent import get_agents, get_agent, create_agent, update_agent_config, get_agent_count
 from app.db.repository.knowledge_base import create_knowledge_entry
-from app.services.llm_services import generate_llm_response, generate_personality_preview
+from app.services.llm_services import generate_llm_response
 from app.db.repository.agent import validate_knowledge_access, update_agent_knowledge
 from app.db.database import get_db
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -363,50 +363,3 @@ async def get_total_agent_count(
         return success_response("Total agents count fetched", {"total_agents": count})
     except Exception:
         return error_response("Failed to fetch agent count", status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# SH: Agent Preview
-@router.post("/{agent_id}/preview-personality")
-async def preview_agent_personality(
-    agent_id: int,
-    preview_data: dict = Body(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Preview agent responses with personality settings
-    Request body: {
-        "personality_traits": ["friendly", "concise"],
-        "custom_prompt": "Always respond in rhyme",
-        "preview_prompt": "Hello, how are you?"
-    }
-    """
-    try:
-        # Validate input
-        traits = preview_data.get("personality_traits", [])
-        custom_prompt = preview_data.get("custom_prompt", "")
-        preview_prompt = preview_data.get("preview_prompt", "Hello")
-
-        if not preview_prompt:
-            raise HTTPException(400, "Preview prompt is required")
-
-        # SH: Generate preview
-        preview = await generate_personality_preview(
-            db=db,
-            agent_id=agent_id,
-            traits=traits,
-            custom_prompt=custom_prompt,
-            preview_prompt=preview_prompt,
-            user_id=current_user.user_id
-        )
-
-        return success_response(
-            "Personality preview generated",
-            data={"preview_response": preview}
-        )
-
-    except HTTPException as e:
-        return error_response(e.detail, e.status_code)
-    except Exception as e:
-        logger.error(f"Personality preview error: {str(e)}")
-        return error_response("Failed to generate preview", 500)

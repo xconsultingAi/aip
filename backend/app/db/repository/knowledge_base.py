@@ -7,10 +7,10 @@ from app.db.models.agent import agent_knowledge
 from fastapi import HTTPException, logger, status
 from sqlalchemy import or_, select, func
 from typing import Any, Dict, List, Optional
-from app.core.youtube_processer import YouTubeProcessor
+from app.core.youtube_processor import YouTubeProcessor
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import selectinload
-from app.services.dashboard_ws import trigger_kb_update
+from app.services.dashboard_events import trigger_kb_update
 from app.models.user import UserOut
 
 # SH: This file will contain all the database operations related to the Knowledge base Models

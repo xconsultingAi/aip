@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from dotenv import load_dotenv
 from tenacity import RetryError
 from app.routes.app_routers import router as app_routers
@@ -15,8 +15,13 @@ from app.core.exceptions import (
     general_exception_handler,
     retry_error_handler
 )
-from app.core.dashboard_ws import DashboardWSManager
+from app.core.dasboard_ws import DashboardWSManager
 from app.routes.endpoints.dashboard_ws import router as dashboard_ws_router
+from app.core.performance_middleware import PerformanceMiddleware
+from app.core.background_task import background_monitor
+from app.routes.endpoints.performance import router as performance_router
+from app.routes.endpoints.dashboard_analytics import router as dashboard_analytics_router
+
 
 
 
@@ -31,12 +36,18 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI()
 
+# ADD PERFORMANCE MIDDLEWARE
+app.add_middleware(PerformanceMiddleware)
+
 # Initialize WebSocket manager
 app.state.ws_manager = DashboardWSManager()
 
 # Include all endpoints
 app.include_router(app_routers, prefix="/api")
 app.include_router(dashboard_ws_router, prefix="/ws")
+app.include_router(performance_router, prefix="/api")
+app.include_router(dashboard_analytics_router, prefix="/api")
+
 
 # Register exception handlers
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -59,4 +70,4 @@ app.add_middleware(
 # Unsecured route for health check
 @app.get("/")
 def status():
-    return success_response(message="Ready...", data={"timestamp": datetime.now().isoformat()})
+    return success_response(message="Ready...", data={"timestamp": datetime.now().isoformat()})   
